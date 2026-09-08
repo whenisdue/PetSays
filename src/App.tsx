@@ -13,7 +13,6 @@ import {
 import { BubbleGraphic } from './components/BubbleGraphic'
 import { BubbleConnector } from './components/BubbleConnector'
 import { ExampleCarousel } from './components/ExampleCarousel'
-import { VibeArt } from './components/VibeArt'
 import { getVibe, vibes, type BubbleKind, type Vibe, type VibeId } from './data/presets'
 import {
   bubbleConnectorSvg,
@@ -42,9 +41,22 @@ type Position = {
 const initialPosition: Position = { x: 58, y: 34 }
 const defaultConnectorTarget: ConnectorTarget = { x: 0.5, y: 0.72 }
 const jpegExportQuality = 0.92
+const suggestionsPerBatch = 4
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
+}
+
+function getSuggestionIndices(lineCount: number, batchIndex: number) {
+  if (lineCount <= 0) return []
+
+  const start = (batchIndex * suggestionsPerBatch) % lineCount
+  const count = Math.min(suggestionsPerBatch, lineCount)
+
+  return Array.from(
+    { length: count },
+    (_, offset) => (start + offset) % lineCount,
+  )
 }
 
 function getBubblePositionBounds(
@@ -95,6 +107,7 @@ function App() {
   const [photo, setPhoto] = useState<LoadedPhoto | null>(null)
   const [vibeId, setVibeId] = useState<VibeId | null>(null)
   const [lineIndex, setLineIndex] = useState(0)
+  const [suggestionBatch, setSuggestionBatch] = useState(0)
   const [currentText, setCurrentText] = useState('')
   const [customOpen, setCustomOpen] = useState(false)
   const [bubbleKind, setBubbleKind] = useState<BubbleKind>('thought')
@@ -123,6 +136,13 @@ function App() {
   const curveDirectionInitializedRef = useRef(false)
 
   const selectedVibe = vibeId ? getVibe(vibeId) : null
+  const visibleLineIndices = useMemo(
+    () =>
+      selectedVibe
+        ? getSuggestionIndices(selectedVibe.lines.length, suggestionBatch)
+        : [],
+    [selectedVibe, suggestionBatch],
+  )
   const resolvedConnector = useMemo(() => {
     if (
       !selectedVibe ||
@@ -274,6 +294,7 @@ function App() {
   const resetForNewPhoto = () => {
     setVibeId(null)
     setLineIndex(0)
+    setSuggestionBatch(0)
     setCurrentText('')
     setCustomOpen(false)
     setBubbleKind('thought')
@@ -313,6 +334,7 @@ function App() {
   const handleVibe = (vibe: Vibe) => {
     setVibeId(vibe.id)
     setLineIndex(0)
+    setSuggestionBatch(0)
     setCurrentText(vibe.lines[0])
     setCustomOpen(false)
     setBubbleKind(vibe.defaultBubble)
@@ -334,8 +356,24 @@ function App() {
 
   const handleAnother = () => {
     if (!selectedVibe) return
-    const nextIndex = (lineIndex + 1) % selectedVibe.lines.length
-    chooseLine(nextIndex)
+
+    const batchCount = Math.max(
+      1,
+      Math.ceil(selectedVibe.lines.length / suggestionsPerBatch),
+    )
+    const nextBatch = (suggestionBatch + 1) % batchCount
+    const nextIndices = getSuggestionIndices(
+      selectedVibe.lines.length,
+      nextBatch,
+    )
+    const nextIndex =
+      nextIndices[Math.floor(Math.random() * nextIndices.length)] ?? 0
+
+    setSuggestionBatch(nextBatch)
+    setLineIndex(nextIndex)
+    setCurrentText(selectedVibe.lines[nextIndex])
+    setCustomOpen(false)
+    setDownloaded(false)
   }
 
   const updateBubblePosition = useCallback((centerX: number, centerY: number) => {
@@ -620,10 +658,9 @@ function App() {
     <div className="app-shell">
       <header className="site-header">
         <a className="wordmark" href="/" onClick={handleHome} aria-label="PetSays home">
-          <span className="wordmark-bubble" aria-hidden="true" />
           <span>PetSays</span>
         </a>
-        <span className="header-note">made for the funny photos</span>
+        <span className="header-note">Small tool. Big opinions.</span>
       </header>
 
       <main id="top">
@@ -774,14 +811,12 @@ function App() {
                           style={{ '--vibe-color': vibe.color, '--vibe-tint': vibe.tint } as React.CSSProperties}
                         >
                           <span
-                            className={`vibe-art vibe-art-${vibe.id}`}
+                            className={`vibe-title-panel vibe-title-${vibe.id}`}
                             style={{ backgroundColor: vibe.tint }}
-                            aria-hidden="true"
                           >
-                            <VibeArt id={vibe.id} color={vibe.color} />
+                            <strong>{vibe.label}</strong>
                           </span>
                           <span className="vibe-card-copy">
-                            <strong>{vibe.label}</strong>
                             <small>{vibe.sample}</small>
                           </span>
                         </button>
@@ -823,21 +858,30 @@ function App() {
                     </div>
 
                     <div className="line-list" aria-label="Alternate funny lines">
-                      {selectedVibe.lines.slice(0, 4).map((line, index) => (
-                        <button
-                          type="button"
-                          key={line}
-                          className={`line-chip ${lineIndex === index && !customOpen ? 'selected' : ''}`}
-                          onClick={() => chooseLine(index)}
-                        >
-                          {line}
-                        </button>
-                      ))}
+                      {visibleLineIndices.map((index) => {
+                        const line = selectedVibe.lines[index]
+
+                        return (
+                          <button
+                            type="button"
+                            key={`${suggestionBatch}-${index}-${line}`}
+                            className={`line-chip ${lineIndex === index && !customOpen ? 'selected' : ''}`}
+                            onClick={() => chooseLine(index)}
+                          >
+                            {line}
+                          </button>
+                        )
+                      })}
                     </div>
 
                     <div className="action-row">
-                      <button type="button" className="another-button" onClick={handleAnother}>
-                        Another one <span aria-hidden="true">↻</span>
+                      <button
+                        type="button"
+                        className="another-button"
+                        onClick={handleAnother}
+                        aria-label="Show four new funny lines"
+                      >
+                        Another one <span className="another-icon" aria-hidden="true">↻</span>
                       </button>
                       <button
                         type="button"
