@@ -24,7 +24,13 @@ import {
   type ConnectorTarget,
   type CurveDirection,
 } from './utils/bubbleConnector'
+import {
+  chooseSmartBubblePlacement,
+  getBubblePositionBounds,
+  type BubblePlacementResult,
+} from './utils/bubblePlacement'
 import { bubbleBodySvg } from './utils/bubbleShell'
+import { detectPetImage, type PetDetectionResult } from './utils/petDetection'
 import './App.css'
 
 type LoadedPhoto = {
@@ -58,38 +64,6 @@ function getSuggestionIndices(lineCount: number, batchIndex: number) {
     { length: count },
     (_, offset) => (start + offset) % lineCount,
   )
-}
-
-function getBubblePositionBounds(
-  stageWidth: number,
-  stageHeight: number,
-  bubbleWidth?: number,
-  bubbleHeight?: number,
-) {
-  if (
-    !Number.isFinite(stageWidth) ||
-    !Number.isFinite(stageHeight) ||
-    stageWidth <= 0 ||
-    stageHeight <= 0
-  ) {
-    return { minX: 16, maxX: 84, minY: 16, maxY: 82 }
-  }
-
-  const edgePaddingX = 14
-  const edgePaddingY = 10
-  const halfWidth = bubbleWidth
-    ? ((bubbleWidth / 2 + edgePaddingX) / stageWidth) * 100
-    : 15
-  const halfHeight = bubbleHeight
-    ? ((bubbleHeight / 2 + edgePaddingY) / stageHeight) * 100
-    : 15
-
-  return {
-    minX: Math.min(halfWidth, 50),
-    maxX: Math.max(100 - halfWidth, 50),
-    minY: Math.min(halfHeight, 50),
-    maxY: Math.max(100 - halfHeight, 50),
-  }
 }
 
 function wrapText(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
@@ -167,6 +141,8 @@ function App() {
   const [isDragging, setIsDragging] = useState(false)
   const [isDraggingTarget, setIsDraggingTarget] = useState(false)
   const [downloaded, setDownloaded] = useState(false)
+  const [detectionResult, setDetectionResult] = useState<PetDetectionResult | null>(null)
+  const [placementResult, setPlacementResult] = useState<BubblePlacementResult | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const stageHostRef = useRef<HTMLDivElement>(null)
@@ -182,6 +158,10 @@ function App() {
   const targetPointerMovedRef = useRef(false)
   const targetDragThresholdRef = useRef(8)
   const curveDirectionInitializedRef = useRef(false)
+  const uploadGenerationRef = useRef(0)
+  const smartPlacementAttemptedRef = useRef(false)
+  const manualBubbleOverrideRef = useRef(false)
+  const manualConnectorOverrideRef = useRef(false)
 
   const selectedVibe = vibeId ? getVibe(vibeId) : null
   const normalizedTextLength = currentText.trim().length
@@ -303,6 +283,57 @@ function App() {
       stageRect.width,
       stageRect.height,
     )
+    if (
+      detectionResult &&
+      !smartPlacementAttemptedRef.current &&
+      !manualBubbleOverrideRef.current
+    ) {
+      smartPlacementAttemptedRef.current = true
+      if (detectionResult.status === 'ready' && detectionResult.subjectBox) {
+        const placement = chooseSmartBubblePlacement({
+          subjectBox: detectionResult.subjectBox,
+          headBox: detectionResult.headBox,
+          bubbleWidth: bubbleRect.width,
+          bubbleHeight: bubbleRect.height,
+          stageWidth: stageRect.width,
+          stageHeight: stageRect.height,
+          bubbleKind,
+          fallbackCenter: { x: initialPosition.x / 100, y: initialPosition.y / 100 },
+          bounds,
+        })
+        setPlacementResult(placement)
+        if (placement.succeeded) {
+          const placedGeometry = {
+            x: placement.center.x - nextGeometry.width / 2,
+            y: placement.center.y - nextGeometry.height / 2,
+            width: nextGeometry.width,
+            height: nextGeometry.height,
+          }
+          const placedTarget = manualConnectorOverrideRef.current
+            ? nextTarget
+            : validateConnectorTarget(
+                bubbleKind,
+                placement.connectorTarget,
+                placedGeometry,
+                stageRect.width,
+                stageRect.height,
+              )
+          setPosition({ x: placement.center.x * 100, y: placement.center.y * 100 })
+          if (!manualConnectorOverrideRef.current) setConnectorTarget(placedTarget)
+          curveDirectionInitializedRef.current = true
+          setCurveDirection(
+            getDefaultCurveDirection(
+              bubbleKind,
+              placedGeometry,
+              placedTarget,
+              stageRect.width,
+              stageRect.height,
+            ),
+          )
+          markCompositionDirty()
+        }
+      }
+    }
     if (!curveDirectionInitializedRef.current) {
       curveDirectionInitializedRef.current = true
       setCurveDirection(
@@ -339,10 +370,11 @@ function App() {
       setConnectorTarget(nextTarget)
       markCompositionDirty()
     }
-  }, [photo, vibeId, currentText, bubbleKind, connectorTarget, position.x, position.y, stageSize.width, stageSize.height, markCompositionDirty])
+  }, [photo, vibeId, currentText, bubbleKind, connectorTarget, position.x, position.y, stageSize.width, stageSize.height, detectionResult, markCompositionDirty])
 
   const handleHome = (event: ReactMouseEvent<HTMLAnchorElement>) => {
     event.preventDefault()
+    uploadGenerationRef.current += 1
     if (photoUrlRef.current) {
       URL.revokeObjectURL(photoUrlRef.current)
       photoUrlRef.current = null
@@ -373,25 +405,43 @@ function App() {
     setBubbleGeometry(null)
     setPosition(initialPosition)
     setDownloaded(false)
+    setDetectionResult(null)
+    setPlacementResult(null)
+    smartPlacementAttemptedRef.current = false
+    manualBubbleOverrideRef.current = false
+    manualConnectorOverrideRef.current = false
   }
 
   const handleFile = (file: File | undefined) => {
     if (!file || !file.type.startsWith('image/')) return
 
+    const uploadGeneration = uploadGenerationRef.current + 1
+    uploadGenerationRef.current = uploadGeneration
     const src = URL.createObjectURL(file)
     const image = new window.Image()
     image.onload = () => {
+      if (uploadGeneration !== uploadGenerationRef.current) {
+        URL.revokeObjectURL(src)
+        return
+      }
       if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current)
       photoUrlRef.current = src
+      resetForNewPhoto()
       setPhoto({
         src,
         name: file.name,
         naturalWidth: image.naturalWidth,
         naturalHeight: image.naturalHeight,
       })
-      resetForNewPhoto()
+      void detectPetImage(image).then((result) => {
+        if (uploadGeneration !== uploadGenerationRef.current) return
+        setDetectionResult(result)
+      })
     }
-    image.onerror = () => URL.revokeObjectURL(src)
+    image.onerror = () => {
+      URL.revokeObjectURL(src)
+      if (uploadGeneration === uploadGenerationRef.current) setDetectionResult(null)
+    }
     image.src = src
   }
 
@@ -407,11 +457,17 @@ function App() {
     setCurrentText(vibe.lines[0])
     setCustomOpen(false)
     setBubbleKind(vibe.defaultBubble)
-    setConnectorTarget(defaultConnectorTarget)
-    setCurveDirection(1)
-    curveDirectionInitializedRef.current = false
+    if (!manualConnectorOverrideRef.current) setConnectorTarget(defaultConnectorTarget)
+    if (!manualBubbleOverrideRef.current) setPosition(initialPosition)
+    if (!manualBubbleOverrideRef.current) {
+      smartPlacementAttemptedRef.current = false
+      setPlacementResult(null)
+    }
+    if (!manualConnectorOverrideRef.current) {
+      setCurveDirection(1)
+      curveDirectionInitializedRef.current = false
+    }
     setBubbleGeometry(null)
-    setPosition(initialPosition)
     setDownloaded(false)
   }
 
@@ -479,6 +535,7 @@ function App() {
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (dragPointerId.current !== event.pointerId) return
+    manualBubbleOverrideRef.current = true
     const offset = bubbleGrabOffsetRef.current ?? { x: 0, y: 0 }
     updateBubblePosition(event.clientX - offset.x, event.clientY - offset.y)
   }
@@ -502,6 +559,7 @@ function App() {
     if (event.key === 'ArrowDown') nextPosition = { x: position.x, y: position.y + step }
     if (!nextPosition) return
     event.preventDefault()
+    manualBubbleOverrideRef.current = true
     const rect = stageRef.current?.getBoundingClientRect()
     const bubbleRect = bubbleGroupRef.current?.getBoundingClientRect()
     const bounds = rect
@@ -514,6 +572,7 @@ function App() {
 
   const updateConnectorTarget = useCallback((clientX: number, clientY: number) => {
     if (!stageRef.current) return
+    manualConnectorOverrideRef.current = true
     const rect = stageRef.current.getBoundingClientRect()
     const bubbleRect = bubbleGroupRef.current?.getBoundingClientRect()
     const bubble = bubbleRect
@@ -608,6 +667,7 @@ function App() {
     if (event.key === 'ArrowDown') nextTarget = { x: connectorTarget.x, y: connectorTarget.y + step }
     if (!nextTarget) return
     event.preventDefault()
+    manualConnectorOverrideRef.current = true
     const rect = stageRef.current?.getBoundingClientRect()
     const bubbleRect = stageRef.current && bubbleGroupRef.current
       ? bubbleGroupRef.current.getBoundingClientRect()
@@ -806,7 +866,6 @@ function App() {
                   className="visually-hidden"
                   type="file"
                   accept="image/*"
-                  capture="environment"
                   onChange={handleFileInput}
                   aria-label="Upload a pet photo"
                 />
@@ -842,7 +901,6 @@ function App() {
               className="visually-hidden"
               type="file"
               accept="image/*"
-              capture="environment"
               onChange={handleFileInput}
               aria-label="Choose a different pet photo"
             />
@@ -859,6 +917,20 @@ function App() {
                   <div
                     ref={stageRef}
                     className="photo-stage"
+                    data-detection-status={detectionResult?.status ?? 'loading'}
+                    data-pet-class={detectionResult?.petClass ?? undefined}
+                    data-subject-box={detectionResult?.subjectBox ? JSON.stringify(detectionResult.subjectBox) : undefined}
+                    data-subject-confidence={detectionResult?.subjectConfidence.toFixed(3)}
+                    data-head-box={detectionResult?.headBox ? JSON.stringify(detectionResult.headBox) : undefined}
+                    data-head-status={detectionResult?.headStatus}
+                    data-head-confidence={detectionResult?.headConfidence.toFixed(3)}
+                    data-detection-runtime={detectionResult?.runtime}
+                    data-model-init-ms={detectionResult?.initializationTimeMs?.toFixed(1)}
+                    data-subject-inference-ms={detectionResult?.subjectInferenceTimeMs?.toFixed(1)}
+                    data-head-inference-ms={detectionResult?.headInferenceTimeMs?.toFixed(1)}
+                    data-total-detection-ms={detectionResult?.totalTimeMs?.toFixed(1)}
+                    data-smart-placement={placementResult?.succeeded ? placementResult.reason : placementResult?.reason ?? 'pending'}
+                    data-placement-score={placementResult?.score.toFixed(2)}
                     style={{
                       width: stageSize.width || '100%',
                       height: stageSize.height || 'auto',
