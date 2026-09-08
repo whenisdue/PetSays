@@ -1,0 +1,195 @@
+export type VibeId =
+  | 'guilty'
+  | 'hungry'
+  | 'judging'
+  | 'dramatic'
+  | 'sleepy'
+  | 'excited'
+  | 'suspicious'
+  | 'chaos'
+
+export type BubbleKind = 'thought' | 'speech'
+
+export type Vibe = {
+  id: VibeId
+  label: string
+  eyebrow: string
+  sample: string
+  color: string
+  tint: string
+  defaultBubble: BubbleKind
+  lines: string[]
+}
+
+export const vibes: Vibe[] = [
+  {
+    id: 'guilty',
+    label: 'Guilty',
+    eyebrow: 'caught in 4K',
+    sample: 'There is no evidence.',
+    color: '#e78562',
+    tint: '#fff0e8',
+    defaultBubble: 'thought',
+    lines: [
+      'I can explain.',
+      'There is no evidence.',
+      'You saw nothing.',
+      'I regret absolutely nothing.',
+      'Before you get mad…',
+      'That was like that already.',
+      'I have an alibi.',
+      'This is being taken out of context.',
+      'Technically, it was an accident.',
+      'Can we not talk about the crumbs?',
+    ],
+  },
+  {
+    id: 'hungry',
+    label: 'Hungry',
+    eyebrow: 'important question',
+    sample: 'Are you going to finish that?',
+    color: '#e0a538',
+    tint: '#fff7de',
+    defaultBubble: 'thought',
+    lines: [
+      'Are you going to finish that?',
+      'I haven’t eaten in minutes.',
+      'So… snacks?',
+      'I noticed you have food.',
+      'Is that for me?',
+      'I could help with that.',
+      'Just one little bite.',
+      'I have room for dessert.',
+      'You eat. I supervise.',
+      'Please share your feelings. And your toast.',
+    ],
+  },
+  {
+    id: 'judging',
+    label: 'Judging You',
+    eyebrow: 'respectfully',
+    sample: 'Interesting choice.',
+    color: '#7b8bd1',
+    tint: '#eef0ff',
+    defaultBubble: 'speech',
+    lines: [
+      'Interesting choice.',
+      'We need to talk about your decisions.',
+      'I expected better.',
+      'I’m just observing.',
+      'That is certainly one way to do it.',
+      'Do you hear yourself?',
+      'I have notes.',
+      'Bold of you to wear that.',
+      'Not my favorite decision.',
+      'I’m trying to be supportive.',
+    ],
+  },
+  {
+    id: 'dramatic',
+    label: 'Dramatic',
+    eyebrow: 'a lot to process',
+    sample: 'I have been betrayed.',
+    color: '#d9799b',
+    tint: '#ffedf4',
+    defaultBubble: 'speech',
+    lines: [
+      'This is the worst day of my life.',
+      'I have been betrayed.',
+      'How could this happen to me?',
+      'I will never recover.',
+      'Tell my story.',
+      'I am choosing to be brave.',
+      'Nobody understands my struggle.',
+      'This changes everything.',
+      'I need a minute.',
+      'Unbelievable. Simply unbelievable.',
+    ],
+  },
+  {
+    id: 'sleepy',
+    label: 'Sleepy',
+    eyebrow: 'do not disturb',
+    sample: 'Wake me when food happens.',
+    color: '#76a7a2',
+    tint: '#eaf8f4',
+    defaultBubble: 'thought',
+    lines: [
+      'Wake me when food happens.',
+      'I’m busy doing nothing.',
+      'Five more hours.',
+      'This meeting could’ve been a nap.',
+      'My eyes are closed on purpose.',
+      'Please lower the volume of existence.',
+      'I was just resting my eyes.',
+      'Dreaming of snacks.',
+      'Can we reschedule this?',
+      'I’ll be awake eventually.',
+    ],
+  },
+  {
+    id: 'excited',
+    label: 'Excited',
+    eyebrow: 'maximum zoomies',
+    sample: 'BEST. DAY. EVER.',
+    color: '#e36f54',
+    tint: '#fff0e7',
+    defaultBubble: 'speech',
+    lines: [
+      'BEST. DAY. EVER.',
+      'Is that for me?',
+      'We’re going WHERE?',
+      'Again! Again! Again!',
+      'I have so much to tell you.',
+      'Look what I can do!',
+      'This is happening!',
+      'I love everything!',
+      'I have an idea!',
+      'Let’s make a little noise.',
+    ],
+  },
+  {
+    id: 'suspicious',
+    label: 'Suspicious',
+    eyebrow: 'not convinced',
+    sample: 'Something is happening.',
+    color: '#8a76b8',
+    tint: '#f2edff',
+    defaultBubble: 'thought',
+    lines: [
+      'Why are you holding the shampoo?',
+      'What did you just say?',
+      'I don’t trust that bag.',
+      'Something is happening.',
+      'I’m watching you.',
+      'That sounds like a trap.',
+      'Explain the noise.',
+      'I have questions.',
+      'Nobody move.',
+      'This feels suspiciously quiet.',
+    ],
+  },
+  {
+    id: 'chaos',
+    label: 'Chaos',
+    eyebrow: 'good intentions',
+    sample: 'No regrets.',
+    color: '#5e9aa8',
+    tint: '#e8f6f6',
+    defaultBubble: 'speech',
+    lines: [
+      'No regrets.',
+      'I have a plan. Sort of.',
+      'Worth it.',
+      'This seemed smarter five minutes ago.',
+      'I was curious.',
+      'Nobody panic.',
+      'It looked fun.',
+      'I can make this worse.',
+      'Let’s see what happens.',
+      'We’ll figure it out later.',
+    ],
+  },
+]
+
+export const getVibe = (id: VibeId) => vibes.find((vibe) => vibe.id === id) ?? vibes[0]

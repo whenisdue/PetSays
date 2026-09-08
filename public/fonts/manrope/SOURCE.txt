@@ -1,0 +1,15 @@
+Manrope 700 and 800 Latin webfonts
+
+Font family: Manrope
+Source package: @fontsource/manrope 5.2.6
+Package homepage: https://fontsource.org/fonts/manrope
+Upstream specimen: https://fonts.google.com/specimen/Manrope
+
+Files:
+- manrope-latin-700-normal.woff2
+- manrope-latin-800-normal.woff2
+
+Downloaded from the versioned Fontsource package on jsDelivr:
+https://cdn.jsdelivr.net/npm/@fontsource/manrope@5.2.6/files/
+
+License: SIL Open Font License 1.1. See OFL.txt in this directory.
