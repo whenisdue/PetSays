@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type CSSProperties,
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -65,8 +66,23 @@ function getBubblePositionBounds(
   bubbleWidth?: number,
   bubbleHeight?: number,
 ) {
-  const halfWidth = bubbleWidth ? (bubbleWidth / stageWidth) * 50 : 15
-  const halfHeight = bubbleHeight ? (bubbleHeight / stageHeight) * 50 : 15
+  if (
+    !Number.isFinite(stageWidth) ||
+    !Number.isFinite(stageHeight) ||
+    stageWidth <= 0 ||
+    stageHeight <= 0
+  ) {
+    return { minX: 16, maxX: 84, minY: 16, maxY: 82 }
+  }
+
+  const edgePaddingX = 14
+  const edgePaddingY = 10
+  const halfWidth = bubbleWidth
+    ? ((bubbleWidth / 2 + edgePaddingX) / stageWidth) * 100
+    : 15
+  const halfHeight = bubbleHeight
+    ? ((bubbleHeight / 2 + edgePaddingY) / stageHeight) * 100
+    : 15
 
   return {
     minX: Math.min(halfWidth, 50),
@@ -80,6 +96,24 @@ function wrapText(context: CanvasRenderingContext2D, text: string, maxWidth: num
   const paragraphs = text.split('\n')
   const lines: string[] = []
 
+  const splitLongWord = (word: string) => {
+    const chunks: string[] = []
+    let chunk = ''
+
+    Array.from(word).forEach((character) => {
+      const candidate = `${chunk}${character}`
+      if (context.measureText(candidate).width <= maxWidth || !chunk) {
+        chunk = candidate
+      } else {
+        chunks.push(chunk)
+        chunk = character
+      }
+    })
+
+    if (chunk) chunks.push(chunk)
+    return chunks
+  }
+
   paragraphs.forEach((paragraph) => {
     const words = paragraph.split(/\s+/).filter(Boolean)
     if (words.length === 0) {
@@ -88,7 +122,20 @@ function wrapText(context: CanvasRenderingContext2D, text: string, maxWidth: num
     }
 
     let currentLine = ''
+
     words.forEach((word) => {
+      if (context.measureText(word).width > maxWidth) {
+        if (currentLine) {
+          lines.push(currentLine)
+          currentLine = ''
+        }
+
+        const chunks = splitLongWord(word)
+        chunks.slice(0, -1).forEach((chunk) => lines.push(chunk))
+        currentLine = chunks.at(-1) ?? ''
+        return
+      }
+
       const candidate = currentLine ? `${currentLine} ${word}` : word
       if (context.measureText(candidate).width <= maxWidth || !currentLine) {
         currentLine = candidate
@@ -97,6 +144,7 @@ function wrapText(context: CanvasRenderingContext2D, text: string, maxWidth: num
         currentLine = word
       }
     })
+
     if (currentLine) lines.push(currentLine)
   })
 
@@ -136,6 +184,27 @@ function App() {
   const curveDirectionInitializedRef = useRef(false)
 
   const selectedVibe = vibeId ? getVibe(vibeId) : null
+  const normalizedTextLength = currentText.trim().length
+  const bubbleCopyClass =
+    normalizedTextLength > 90
+      ? 'bubble-copy-xlong'
+      : normalizedTextLength > 52
+        ? 'bubble-copy-long'
+        : ''
+
+  const bubbleOuterMaxWidth = useMemo(() => {
+    const absoluteMax = bubbleKind === 'thought' ? 368 : 356
+    const safeStageWidth = Number.isFinite(stageSize.width) ? stageSize.width : 0
+
+    if (safeStageWidth <= 0) return absoluteMax
+    return Math.min(absoluteMax, Math.max(150, safeStageWidth - 28))
+  }, [bubbleKind, stageSize.width])
+
+  const bubbleTextMaxWidth = Math.max(
+    116,
+    bubbleOuterMaxWidth - (bubbleKind === 'thought' ? 30 : 0),
+  )
+
   const visibleLineIndices = useMemo(
     () =>
       selectedVibe
@@ -565,6 +634,55 @@ function App() {
     markCompositionDirty()
   }
 
+  const drawPetSaysBrandMark = (
+    context: CanvasRenderingContext2D,
+    canvasWidth: number,
+    canvasHeight: number,
+  ) => {
+    const shortEdge = Math.min(canvasWidth, canvasHeight)
+    const fontSize = Math.max(16, Math.min(46, shortEdge * 0.036))
+    const horizontalPadding = fontSize * 0.62
+    const verticalPadding = fontSize * 0.36
+    const cornerRadius = fontSize * 0.64
+    const edgeInset = Math.max(12, shortEdge * 0.024)
+
+    context.save()
+    context.font = `800 ${fontSize}px "Manrope", "Avenir Next", Avenir, "Segoe UI", sans-serif`
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+
+    const label = 'petsays.app'
+    const textWidth = context.measureText(label).width
+    const pillWidth = textWidth + horizontalPadding * 2
+    const pillHeight = fontSize + verticalPadding * 2
+    const x = canvasWidth - edgeInset - pillWidth
+    const y = canvasHeight - edgeInset - pillHeight
+
+    context.beginPath()
+    context.moveTo(x + cornerRadius, y)
+    context.lineTo(x + pillWidth - cornerRadius, y)
+    context.quadraticCurveTo(x + pillWidth, y, x + pillWidth, y + cornerRadius)
+    context.lineTo(x + pillWidth, y + pillHeight - cornerRadius)
+    context.quadraticCurveTo(
+      x + pillWidth,
+      y + pillHeight,
+      x + pillWidth - cornerRadius,
+      y + pillHeight,
+    )
+    context.lineTo(x + cornerRadius, y + pillHeight)
+    context.quadraticCurveTo(x, y + pillHeight, x, y + pillHeight - cornerRadius)
+    context.lineTo(x, y + cornerRadius)
+    context.quadraticCurveTo(x, y, x + cornerRadius, y)
+    context.closePath()
+
+    context.fillStyle = 'rgba(32, 31, 28, 0.68)'
+    context.fill()
+
+    context.fillStyle = 'rgba(255, 253, 248, 0.97)'
+    context.fillText(label, x + pillWidth / 2, y + pillHeight / 2 + fontSize * 0.02)
+    context.restore()
+  }
+
   const handleDownload = async () => {
     if (
       !photo ||
@@ -635,6 +753,8 @@ function App() {
     lines.forEach((line, index) => context.fillText(line, textX, firstY + index * lineHeight))
     context.restore()
 
+    drawPetSaysBrandMark(context, canvas.width, canvas.height)
+
     const link = document.createElement('a')
     const jpegBlob = await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob(
@@ -679,7 +799,7 @@ function App() {
                   <span className="upload-card-title">Upload a photo</span>
                   <span className="upload-card-hint">Camera roll or camera</span>
                 </label>
-                <p className="upload-trust">No signup · No watermark</p>
+                <p className="upload-trust">No signup · Free to use</p>
                 <input
                   ref={fileInputRef}
                   id="photo-upload"
@@ -714,7 +834,6 @@ function App() {
                 <p className="eyebrow">{selectedVibe ? 'The translation is happening' : 'Photo received'}</p>
                 <h1 id="maker-title">{selectedVibe ? 'Look what your pet is saying.' : 'Pick a vibe.'}</h1>
               </div>
-              <label className="change-photo-button" htmlFor="photo-upload">Change photo</label>
             </div>
 
             <input
@@ -730,6 +849,12 @@ function App() {
 
             <div className={`maker-layout ${selectedVibe ? 'has-result' : ''}`}>
               <div className="photo-column">
+                <div className="photo-column-toolbar">
+                  <label className="change-photo-button" htmlFor="photo-upload">
+                    <span className="change-photo-icon" aria-hidden="true">↻</span>
+                    <span>Change photo</span>
+                  </label>
+                </div>
                 <div className="stage-host" ref={stageHostRef}>
                   <div
                     ref={stageRef}
@@ -756,7 +881,12 @@ function App() {
                       <div
                         ref={bubbleGroupRef}
                         className={`bubble-group ${isDragging ? 'is-dragging' : ''}`}
-                        style={{ left: `${position.x}%`, top: `${position.y}%` }}
+                        style={{
+                          left: `${position.x}%`,
+                          top: `${position.y}%`,
+                          '--bubble-outer-max-width': `${bubbleOuterMaxWidth}px`,
+                          '--bubble-text-max-width': `${bubbleTextMaxWidth}px`,
+                        } as CSSProperties}
                         onPointerDown={handlePointerDown}
                         onPointerMove={handlePointerMove}
                         onPointerUp={handlePointerUp}
@@ -770,6 +900,7 @@ function App() {
                         <BubbleGraphic
                           kind={bubbleKind}
                           text={currentText}
+                          className={bubbleCopyClass}
                           textRef={bubbleTextRef}
                         />
                       </div>
@@ -808,7 +939,7 @@ function App() {
                           key={vibe.id}
                           type="button"
                           onClick={() => handleVibe(vibe)}
-                          style={{ '--vibe-color': vibe.color, '--vibe-tint': vibe.tint } as React.CSSProperties}
+                          style={{ '--vibe-color': vibe.color, '--vibe-tint': vibe.tint } as CSSProperties}
                         >
                           <span
                             className={`vibe-title-panel vibe-title-${vibe.id}`}
@@ -917,7 +1048,7 @@ function App() {
                       <span aria-hidden="true">↓</span>
                     </button>
                     <p className={`download-note ${downloaded ? 'is-done' : ''}`}>
-                      {downloaded ? 'Saved as a photo. Make another?' : 'Free, no watermark, no signup.'}
+                      {downloaded ? 'Saved as a photo. Make another?' : 'Free, includes a small PetSays mark, no signup.'}
                     </p>
 
                     <button type="button" className="back-to-vibes" onClick={() => setVibeId(null)}>

@@ -546,7 +546,7 @@ h2 {
 .maker-topline {
   display: flex;
   align-items: end;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 24px;
   margin-bottom: 30px;
 }
@@ -557,28 +557,58 @@ h2 {
   letter-spacing: -0.055em;
 }
 
-.change-photo-button {
-  display: inline-flex;
-  min-height: 44px;
-  align-items: center;
+.photo-column-toolbar {
+  display: flex;
   justify-content: center;
-  flex-shrink: 0;
-  padding: 10px 16px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--muted-ink);
-  cursor: pointer;
-  font-size: 0.78rem;
-  font-weight: 700;
-  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+  margin-bottom: 10px;
 }
 
-.change-photo-button:hover,
-.change-photo-button:active {
-  border-color: var(--ink);
+.change-photo-button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid rgba(32, 31, 28, 0.18);
+  border-radius: 999px;
   background: var(--paper);
+  box-shadow: 2px 3px 0 rgba(32, 31, 28, 0.08);
+  color: var(--muted-ink);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 800;
+  transition:
+    border-color 160ms ease,
+    color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.change-photo-icon {
+  display: inline-block;
+  color: var(--accent-dark);
+  font-size: 0.9rem;
+  line-height: 1;
+  transition: transform 220ms ease;
+}
+
+.change-photo-button:hover {
+  border-color: var(--ink);
+  background: var(--mint);
   color: var(--ink);
+  box-shadow: 3px 4px 0 rgba(32, 31, 28, 0.12);
+  transform: translateY(-1px);
+}
+
+.change-photo-button:hover .change-photo-icon {
+  transform: rotate(-24deg);
+}
+
+.change-photo-button:active {
+  box-shadow: 1px 1px 0 rgba(32, 31, 28, 0.12);
+  transform: translateY(1px);
 }
 
 .maker-layout {
@@ -1107,7 +1137,7 @@ h2 {
   display: block;
   width: max-content;
   min-width: 116px;
-  max-width: min(74vw, 356px);
+  max-width: var(--bubble-outer-max-width, min(74vw, 356px));
   padding-bottom: 20px;
   color: var(--ink);
 }
@@ -1129,7 +1159,7 @@ h2 {
   display: block;
   width: max-content;
   min-width: 116px;
-  max-width: min(74vw, 356px);
+  max-width: var(--bubble-text-max-width, min(74vw, 356px));
   padding: 19px 31px 18px;
   color: var(--ink);
   font-size: clamp(0.92rem, 2.5vw, 1.2rem);
@@ -1138,10 +1168,11 @@ h2 {
   overflow-wrap: anywhere;
   text-align: center;
   white-space: pre-wrap;
+  word-break: normal;
 }
 
 .bubble-graphic.thought {
-  max-width: min(74vw, 368px);
+  max-width: var(--bubble-outer-max-width, min(74vw, 368px));
   padding-left: 12px;
   padding-right: 18px;
 }
@@ -1154,6 +1185,20 @@ h2 {
 
 .bubble-graphic.speech .bubble-text {
   transform: translateY(2px);
+}
+
+.bubble-graphic.bubble-copy-long .bubble-text {
+  padding-right: 27px;
+  padding-left: 27px;
+  font-size: 1.03rem;
+  line-height: 1.22;
+}
+
+.bubble-graphic.bubble-copy-xlong .bubble-text {
+  padding-right: 23px;
+  padding-left: 23px;
+  font-size: 0.88rem;
+  line-height: 1.25;
 }
 
 .site-footer {
@@ -1198,6 +1243,14 @@ h2 {
 
   .bubble-text {
     font-size: 1.2rem;
+  }
+
+  .bubble-graphic.bubble-copy-long .bubble-text {
+    font-size: 1.05rem;
+  }
+
+  .bubble-graphic.bubble-copy-xlong .bubble-text {
+    font-size: 0.9rem;
   }
 }
 
@@ -1449,10 +1502,14 @@ h2 {
     font-size: clamp(2.25rem, 10.5vw, 3.25rem);
   }
 
+  .photo-column-toolbar {
+    margin-bottom: 8px;
+  }
+
   .change-photo-button {
-    min-height: 40px;
-    padding: 8px 10px;
-    font-size: 0.68rem;
+    min-height: 34px;
+    padding: 6px 10px;
+    font-size: 0.66rem;
   }
 
   .stage-host {
@@ -1465,19 +1522,19 @@ h2 {
 
   .bubble-graphic {
     min-width: 94px;
-    max-width: min(72vw, 282px);
+    max-width: min(var(--bubble-outer-max-width, 282px), 282px);
     padding-bottom: 16px;
   }
 
   .bubble-text {
     min-width: 94px;
-    max-width: min(72vw, 282px);
+    max-width: min(var(--bubble-text-max-width, 282px), 282px);
     padding: 15px 24px 14px;
     font-size: 0.88rem;
   }
 
   .bubble-graphic.thought {
-    max-width: min(72vw, 290px);
+    max-width: min(var(--bubble-outer-max-width, 290px), 290px);
     padding-left: 10px;
     padding-right: 14px;
   }
@@ -1485,6 +1542,20 @@ h2 {
   .bubble-graphic.thought .bubble-text {
     padding-right: 24px;
     padding-left: 24px;
+  }
+
+  .bubble-graphic.bubble-copy-long .bubble-text {
+    padding-right: 21px;
+    padding-left: 21px;
+    font-size: 0.82rem;
+    line-height: 1.23;
+  }
+
+  .bubble-graphic.bubble-copy-xlong .bubble-text {
+    padding-right: 18px;
+    padding-left: 18px;
+    font-size: 0.74rem;
+    line-height: 1.26;
   }
 
   .control-heading {
