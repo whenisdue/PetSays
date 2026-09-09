@@ -180,7 +180,64 @@ function verticalCompositionPenalty(center: BubbleCenter, label: string) {
   if (center.y <= 0.74) return 42
 
   const bottomPenalty = 112 + (center.y - 0.74) * 220
-  return label === 'bottom-center' ? bottomPenalty + 70 : bottomPenalty
+  return label === 'bottom-center' ? bottomPenalty + 150 : bottomPenalty
+}
+
+function candidatePriority(label: string) {
+  if (label === 'top-left' || label === 'top-right') return 0
+  if (label === 'above-subject') return 1
+  if (label === 'top-center') return 2
+  if (
+    label === 'middle-left' ||
+    label === 'middle-right' ||
+    label === 'left-of-subject' ||
+    label === 'right-of-subject' ||
+    label.startsWith('safest-')
+  ) return 3
+  if (label === 'bottom-left' || label === 'bottom-right') return 4
+  return 5
+}
+
+function candidateSideRoom(label: string, subject: NormalizedRect) {
+  if (label.includes('left')) return subject.x
+  if (label.includes('right')) return 1 - subject.x - subject.width
+  return 0
+}
+
+function getTrustedHeadBox(
+  subject: NormalizedRect,
+  headBox?: NormalizedRect | null,
+): NormalizedRect | null {
+  if (!headBox || area(headBox) <= 0) return null
+
+  const subjectArea = Math.max(area(subject), 0.000001)
+  const subjectWidth = Math.max(subject.width, 0.000001)
+  const subjectHeight = Math.max(subject.height, 0.000001)
+  const headCenter = centerOf(headBox)
+  const areaRatio = area(headBox) / subjectArea
+  const widthRatio = headBox.width / subjectWidth
+  const heightRatio = headBox.height / subjectHeight
+  const horizontallyNearSubject =
+    headCenter.x >= subject.x - 0.05 &&
+    headCenter.x <= subject.x + subject.width + 0.05
+  const verticallyNearSubject =
+    headCenter.y >= subject.y - 0.05 &&
+    headCenter.y <= subject.y + subject.height + 0.05
+
+  // The current "head" pass re-runs a pet detector on the upper part of the
+  // subject. It can occasionally return most of the pet rather than the head.
+  // Only let compact, head-like boxes become a hard exclusion zone.
+  if (
+    areaRatio > 0.48 ||
+    widthRatio > 0.82 ||
+    heightRatio > 0.68 ||
+    !horizontallyNearSubject ||
+    !verticallyNearSubject
+  ) {
+    return null
+  }
+
+  return headBox
 }
 
 export function chooseSmartBubblePlacement({
@@ -204,7 +261,9 @@ export function chooseSmartBubblePlacement({
   fallbackCenter: BubbleCenter
   bounds: BubblePositionBounds
 }): BubblePlacementResult {
-  const fallbackTarget = centerOf(headBox ?? subjectBox)
+  const trustedHeadBox = getTrustedHeadBox(subjectBox, headBox)
+  const fallbackTarget = centerOf(trustedHeadBox ?? subjectBox)
+
   if (
     ![bubbleWidth, bubbleHeight, stageWidth, stageHeight].every(Number.isFinite) ||
     bubbleWidth <= 0 ||
@@ -224,58 +283,170 @@ export function chooseSmartBubblePlacement({
 
   const normalizedBubbleWidth = bubbleWidth / stageWidth
   const normalizedBubbleHeight = bubbleHeight / stageHeight
-  const bubbleArea = Math.max(0.000001, normalizedBubbleWidth * normalizedBubbleHeight)
-  const target = centerOf(headBox ?? subjectBox)
-  const bodyClearance = inflate(subjectBox, 12 / stageWidth + 0.012, 12 / stageHeight + 0.012)
-  const headClearance = headBox
-    ? inflate(headBox, 16 / stageWidth + 0.018, 16 / stageHeight + 0.018)
+  const bubbleArea = Math.max(
+    0.000001,
+    normalizedBubbleWidth * normalizedBubbleHeight,
+  )
+  const target = centerOf(trustedHeadBox ?? subjectBox)
+  const bodyClearance = inflate(
+    subjectBox,
+    12 / stageWidth + 0.012,
+    12 / stageHeight + 0.012,
+  )
+  const headClearance = trustedHeadBox
+    ? inflate(
+        trustedHeadBox,
+        12 / stageWidth + 0.012,
+        12 / stageHeight + 0.012,
+      )
     : null
   const stageDiagonal = Math.max(1, Math.hypot(stageWidth, stageHeight))
   const stageAspect = stageWidth / stageHeight
 
   const scoreCandidate = (candidate: Candidate) => {
     const center = candidate
-    const rect = bubbleRect(center, normalizedBubbleWidth, normalizedBubbleHeight)
-    const headOverlap = headBox ? overlapArea(rect, headBox) / bubbleArea : 0
+    const rect = bubbleRect(
+      center,
+      normalizedBubbleWidth,
+      normalizedBubbleHeight,
+    )
+    const headOverlap = trustedHeadBox
+      ? overlapArea(rect, trustedHeadBox) / bubbleArea
+      : 0
     const headClearanceOverlap = headClearance
       ? overlapArea(rect, headClearance) / bubbleArea
       : 0
     const bodyOverlap = overlapArea(rect, subjectBox) / bubbleArea
-    const bodyClearanceOverlap = overlapArea(rect, bodyClearance) / bubbleArea
-    const connectorDistance = Math.hypot(
-      (center.x - target.x) * stageWidth,
-      (center.y - target.y) * stageHeight,
-    ) / stageDiagonal
-    const kindAdjustment = bubbleKind === 'thought' ? connectorDistance * 2 : 0
+    const bodyClearanceOverlap =
+      overlapArea(rect, bodyClearance) / bubbleArea
+    const withinStage =
+      rect.x >= -0.0001 &&
+      rect.y >= -0.0001 &&
+      rect.x + rect.width <= 1.0001 &&
+      rect.y + rect.height <= 1.0001
+    const connectorDistance =
+      Math.hypot(
+        (center.x - target.x) * stageWidth,
+        (center.y - target.y) * stageHeight,
+      ) / stageDiagonal
+    const kindAdjustment =
+      bubbleKind === 'thought' ? connectorDistance * 2 : 0
 
-    return headOverlap * 7200 +
-      headClearanceOverlap * 520 +
-      bodyOverlap * 980 +
-      bodyClearanceOverlap * 150 +
-      connectorDistance * 24 +
-      compositionPenalty(center, subjectBox, stageAspect) +
-      verticalCompositionPenalty(center, candidate.label) +
-      kindAdjustment
+    return {
+      ...candidate,
+      headOverlap,
+      headClearanceOverlap,
+      bodyOverlap,
+      bodyClearanceOverlap,
+      withinStage,
+      score:
+        headOverlap * 7200 +
+        headClearanceOverlap * 420 +
+        bodyOverlap * 760 +
+        bodyClearanceOverlap * 90 +
+        connectorDistance * 24 +
+        compositionPenalty(center, subjectBox, stageAspect) +
+        verticalCompositionPenalty(center, candidate.label) +
+        kindAdjustment,
+    }
   }
 
-  const candidates = getCandidates(subjectBox, normalizedBubbleWidth, normalizedBubbleHeight, bounds)
-  const ranked = candidates
-    .map((candidate) => ({ ...candidate, score: scoreCandidate(candidate) }))
-    .sort((first, second) => first.score - second.score)
-  const best = ranked[0]
-  const fallbackScore = scoreCandidate({
-    x: clamp(fallbackCenter.x, bounds.minX / 100, bounds.maxX / 100),
-    y: clamp(fallbackCenter.y, bounds.minY / 100, bounds.maxY / 100),
-    label: 'fallback',
-  })
-  const meaningfulImprovement = Boolean(best) && best.score + 2 < fallbackScore
+  const candidates = getCandidates(
+    subjectBox,
+    normalizedBubbleWidth,
+    normalizedBubbleHeight,
+    bounds,
+  )
+  const ranked = candidates.map(scoreCandidate)
 
-  if (!best || !meaningfulImprovement) {
+  const isHeadSafe = (candidate: (typeof ranked)[number]) =>
+    candidate.withinStage &&
+    candidate.headOverlap <= 0.005 &&
+    candidate.headClearanceOverlap <= 0.12
+
+  const compareByClarity = (
+    first: (typeof ranked)[number],
+    second: (typeof ranked)[number],
+  ) => {
+    const bodyDelta = first.bodyOverlap - second.bodyOverlap
+    if (Math.abs(bodyDelta) > 0.03) return bodyDelta
+
+    const clearanceDelta =
+      first.bodyClearanceOverlap - second.bodyClearanceOverlap
+    if (Math.abs(clearanceDelta) > 0.04) return clearanceDelta
+
+    const firstRoom = candidateSideRoom(first.label, subjectBox)
+    const secondRoom = candidateSideRoom(second.label, subjectBox)
+    if (Math.abs(firstRoom - secondRoom) > 0.035) {
+      return secondRoom - firstRoom
+    }
+
+    return first.score - second.score
+  }
+
+  const topCandidates = ranked.filter(
+    (candidate) =>
+      candidate.withinStage && candidatePriority(candidate.label) <= 2,
+  )
+  const sideCandidates = ranked.filter(
+    (candidate) =>
+      candidate.withinStage && candidatePriority(candidate.label) === 3,
+  )
+  const bottomCandidates = ranked.filter(
+    (candidate) =>
+      candidate.withinStage && candidatePriority(candidate.label) >= 4,
+  )
+
+  // Product rule: initial placement should feel predictable.
+  // A head-safe upper placement is better than an empty patch of floor.
+  // Body overlap is allowed because the user can drag/resize the bubble.
+  const comfortableTop = topCandidates
+    .filter(
+      (candidate) =>
+        isHeadSafe(candidate) &&
+        candidate.bodyOverlap <= 0.6,
+    )
+    .sort(compareByClarity)[0]
+
+  const comfortableSide = sideCandidates
+    .filter(
+      (candidate) =>
+        isHeadSafe(candidate) &&
+        candidate.bodyOverlap <= 0.6,
+    )
+    .sort(compareByClarity)[0]
+
+  const anyHeadSafeTop = topCandidates
+    .filter(isHeadSafe)
+    .sort(compareByClarity)[0]
+
+  const anyHeadSafeSide = sideCandidates
+    .filter(isHeadSafe)
+    .sort(compareByClarity)[0]
+
+  const headSafeBottom = bottomCandidates
+    .filter(isHeadSafe)
+    .sort(compareByClarity)[0]
+
+  const best =
+    comfortableTop ??
+    comfortableSide ??
+    anyHeadSafeTop ??
+    anyHeadSafeSide ??
+    headSafeBottom ??
+    [...topCandidates, ...sideCandidates].sort((first, second) => {
+      const headDelta = first.headOverlap - second.headOverlap
+      if (Math.abs(headDelta) > 0.005) return headDelta
+      return compareByClarity(first, second)
+    })[0] ??
+    bottomCandidates.sort(compareByClarity)[0]
+
+  if (!best) {
     return {
       succeeded: false,
       center: fallbackCenter,
       connectorTarget: target,
-      score: best?.score ?? Number.POSITIVE_INFINITY,
+      score: Number.POSITIVE_INFINITY,
       reason: 'fallback-is-as-safe',
     }
   }
@@ -288,3 +459,4 @@ export function chooseSmartBubblePlacement({
     reason: best.label,
   }
 }
+
