@@ -15,14 +15,13 @@ export type ShellIntersection = {
 
 const viewBoxWidth = 320
 const viewBoxHeight = 200
-const thoughtScaleY = 1.18
 const perimeterStepsPerCurve = 18
 
 export const speechBodyPath =
   'M160 14C242 14 306 30 306 96.5C306 163 242 179 160 179C78 179 14 163 14 96.5C14 30 78 14 160 14Z'
 
 export const thoughtBodyPath =
-  'M50 16C28 16 13 31 17 51C1 66 11 87 32 91C27 113 48 133 75 129C91 149 126 148 143 133C169 148 204 145 213 124C240 131 266 114 263 92C289 91 305 72 292 52C297 31 279 14 256 16C237 0 205 4 188 18C167 2 131 3 113 19C95 4 68 2 50 16Z'
+  'M55 35C40 12 73 1 97 21C116 -1 150 2 163 29C186 3 218 12 225 41C255 31 282 51 271 80C301 89 303 121 276 138C275 166 244 182 216 163C195 191 157 193 133 168C107 189 75 177 71 148C40 159 12 142 22 113C-2 100 3 69 31 60C27 44 38 28 55 35Z'
 
 const cubicPoint = (
   start: BubblePoint,
@@ -101,7 +100,7 @@ const samplePath = (path: string, scaleY = 1): BubblePoint[] => {
 
 const localPerimeters: Record<BubbleKind, BubblePoint[]> = {
   speech: samplePath(speechBodyPath),
-  thought: samplePath(thoughtBodyPath, thoughtScaleY),
+  thought: samplePath(thoughtBodyPath),
 }
 
 const localBounds = Object.fromEntries(
@@ -248,7 +247,7 @@ export const getBubbleShellIntersection = (
 
 const shellMarkup = (kind: BubbleKind) => {
   if (kind === 'thought') {
-    return `<g transform="scale(1 1.18)"><path d="${thoughtBodyPath}" fill="#fffdf8" stroke="#201f1c" stroke-width="6" stroke-linejoin="round" /></g>`
+    return `<path d="${thoughtBodyPath}" fill="#fffdf8" stroke="#201f1c" stroke-width="7" stroke-linejoin="round" />`
   }
   return `<path d="${speechBodyPath}" fill="#fffdf8" stroke="#201f1c" stroke-width="6" stroke-linejoin="round" />`
 }

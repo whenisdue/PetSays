@@ -21,7 +21,7 @@ export function BubbleGraphic({
   return (
     <div className={`bubble-graphic ${kind} ${className}`.trim()} data-kind={kind}>
       <svg className="bubble-shell" viewBox="0 0 320 200" preserveAspectRatio="none" aria-hidden="true">
-        <path d={kind === 'speech' ? speechBodyPath : thoughtBodyPath} transform={kind === 'thought' ? 'scale(1 1.18)' : undefined} fill="#fffdf8" stroke="#201f1c" strokeWidth="6" strokeLinejoin="round" />
+        <path d={kind === 'speech' ? speechBodyPath : thoughtBodyPath} fill="#fffdf8" stroke="#201f1c" strokeWidth={kind === 'thought' ? 7 : 6} strokeLinejoin="round" />
       </svg>
       <span ref={textRef} className="bubble-text">{text}</span>
     </div>

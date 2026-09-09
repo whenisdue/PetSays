@@ -1,3 +1,5 @@
+export type BubbleKind = 'thought' | 'speech'
+
 export type VibeId =
   | 'guilty'
   | 'hungry'
@@ -8,8 +10,6 @@ export type VibeId =
   | 'suspicious'
   | 'chaos'
 
-export type BubbleKind = 'thought' | 'speech'
-
 export type Vibe = {
   id: VibeId
   label: string
@@ -17,7 +17,6 @@ export type Vibe = {
   sample: string
   color: string
   tint: string
-  defaultBubble: BubbleKind
   lines: string[]
 }
 
@@ -29,7 +28,6 @@ export const vibes: Vibe[] = [
     sample: 'There is no evidence.',
     color: '#e78562',
     tint: '#fff0e8',
-    defaultBubble: 'thought',
     lines: [
       'I can explain.',
       'There is no evidence.',
@@ -56,7 +54,6 @@ export const vibes: Vibe[] = [
     sample: 'Are you going to finish that?',
     color: '#e0a538',
     tint: '#fff7de',
-    defaultBubble: 'thought',
     lines: [
       'Are you going to finish that?',
       'I haven’t eaten in minutes.',
@@ -83,7 +80,6 @@ export const vibes: Vibe[] = [
     sample: 'Interesting choice.',
     color: '#7b8bd1',
     tint: '#eef0ff',
-    defaultBubble: 'speech',
     lines: [
       'Interesting choice.',
       'We need to talk about your decisions.',
@@ -110,7 +106,6 @@ export const vibes: Vibe[] = [
     sample: 'I have been betrayed.',
     color: '#d9799b',
     tint: '#ffedf4',
-    defaultBubble: 'speech',
     lines: [
       'This is the worst day of my life.',
       'I have been betrayed.',
@@ -137,7 +132,6 @@ export const vibes: Vibe[] = [
     sample: 'Wake me when food happens.',
     color: '#76a7a2',
     tint: '#eaf8f4',
-    defaultBubble: 'thought',
     lines: [
       'Wake me when food happens.',
       'I’m busy doing nothing.',
@@ -164,7 +158,6 @@ export const vibes: Vibe[] = [
     sample: 'BEST. DAY. EVER.',
     color: '#e36f54',
     tint: '#fff0e7',
-    defaultBubble: 'speech',
     lines: [
       'BEST. DAY. EVER.',
       'Is that for me?',
@@ -191,7 +184,6 @@ export const vibes: Vibe[] = [
     sample: 'Something is happening.',
     color: '#8a76b8',
     tint: '#f2edff',
-    defaultBubble: 'thought',
     lines: [
       'Why are you holding the shampoo?',
       'What did you just say?',
@@ -218,7 +210,6 @@ export const vibes: Vibe[] = [
     sample: 'No regrets.',
     color: '#5e9aa8',
     tint: '#e8f6f6',
-    defaultBubble: 'speech',
     lines: [
       'No regrets.',
       'I have a plan. Sort of.',

@@ -13,8 +13,9 @@ import {
 } from 'react'
 import { BubbleGraphic } from './components/BubbleGraphic'
 import { BubbleConnector } from './components/BubbleConnector'
-import { ExampleCarousel } from './components/ExampleCarousel'
-import { getVibe, vibes, type BubbleKind, type Vibe, type VibeId } from './data/presets'
+import { HeroDemo, HeroSteps, HeroUploadRail } from './components/ExampleCarousel'
+import '@fontsource/fredoka/latin-700.css'
+import { getVibe, vibes, type Vibe, type VibeId } from './data/presets'
 import {
   bubbleConnectorSvg,
   getDefaultCurveDirection,
@@ -45,8 +46,11 @@ type Position = {
   y: number
 }
 
-const initialPosition: Position = { x: 58, y: 34 }
+const initialPosition: Position = { x: 50, y: 26 }
 const defaultConnectorTarget: ConnectorTarget = { x: 0.5, y: 0.72 }
+const minBubbleScale = 0.74
+const maxBubbleScale = 1.28
+const bubbleScaleStep = 0.08
 const jpegExportQuality = 0.92
 const suggestionsPerBatch = 4
 
@@ -125,6 +129,21 @@ function wrapText(context: CanvasRenderingContext2D, text: string, maxWidth: num
   return lines
 }
 
+type DecorativePage = 'landing' | 'picker' | 'result'
+
+function DecorativeSpots({ page }: { page: DecorativePage }) {
+  return (
+    <div className={`vibe-atmosphere vibe-atmosphere-${page}`} aria-hidden="true">
+      <span className="vibe-spot vibe-spot-mint" />
+      <span className="vibe-spot vibe-spot-lilac" />
+      <span className="vibe-spot vibe-spot-peach" />
+      <span className="vibe-spot vibe-spot-sun" />
+      <span className="vibe-spot vibe-spot-sky" />
+      <span className="vibe-spot vibe-spot-coral" />
+    </div>
+  )
+}
+
 function App() {
   const [photo, setPhoto] = useState<LoadedPhoto | null>(null)
   const [vibeId, setVibeId] = useState<VibeId | null>(null)
@@ -132,11 +151,12 @@ function App() {
   const [suggestionBatch, setSuggestionBatch] = useState(0)
   const [currentText, setCurrentText] = useState('')
   const [customOpen, setCustomOpen] = useState(false)
-  const [bubbleKind, setBubbleKind] = useState<BubbleKind>('thought')
+  const bubbleKind = 'thought' as const
   const [connectorTarget, setConnectorTarget] = useState<ConnectorTarget>(defaultConnectorTarget)
   const [curveDirection, setCurveDirection] = useState<CurveDirection>(1)
   const [bubbleGeometry, setBubbleGeometry] = useState<BubbleBox | null>(null)
   const [position, setPosition] = useState<Position>(initialPosition)
+  const [bubbleScale, setBubbleScale] = useState(1)
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [isDraggingTarget, setIsDraggingTarget] = useState(false)
@@ -147,6 +167,7 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const stageHostRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
+  const stageSizeRef = useRef({ width: 0, height: 0 })
   const bubbleGroupRef = useRef<HTMLDivElement>(null)
   const bubbleTextRef = useRef<HTMLSpanElement>(null)
   const textAreaRef = useRef<HTMLTextAreaElement>(null)
@@ -173,16 +194,16 @@ function App() {
         : ''
 
   const bubbleOuterMaxWidth = useMemo(() => {
-    const absoluteMax = bubbleKind === 'thought' ? 368 : 356
+    const absoluteMax = 368
     const safeStageWidth = Number.isFinite(stageSize.width) ? stageSize.width : 0
 
     if (safeStageWidth <= 0) return absoluteMax
     return Math.min(absoluteMax, Math.max(150, safeStageWidth - 28))
-  }, [bubbleKind, stageSize.width])
+  }, [stageSize.width])
 
   const bubbleTextMaxWidth = Math.max(
     116,
-    bubbleOuterMaxWidth - (bubbleKind === 'thought' ? 30 : 0),
+    bubbleOuterMaxWidth - 30,
   )
 
   const visibleLineIndices = useMemo(
@@ -221,6 +242,7 @@ function App() {
     connectorTarget,
     curveDirection,
   ])
+
   const markCompositionDirty = useCallback(() => setDownloaded(false), [])
 
   useEffect(() => {
@@ -236,13 +258,20 @@ function App() {
       const hostWidth = stageHostRef.current?.clientWidth ?? 0
       if (!hostWidth) return
       const ratio = photo.naturalWidth / photo.naturalHeight
-      const desktopHeightFloor = window.innerWidth >= 760 ? 430 : 0
-      const maxHeight = Math.min(
-        Math.max(window.innerHeight * 0.56, desktopHeightFloor),
-        560,
-      )
-      const width = Math.min(hostWidth, maxHeight * ratio)
-      setStageSize({ width, height: width / ratio })
+      const isDesktop = window.matchMedia('(min-width: 760px)').matches
+      const width = isDesktop
+        ? Math.min(hostWidth, Math.min(Math.max(window.innerHeight * 0.56, 430), 560) * ratio)
+        : hostWidth
+      const nextStageSize = { width, height: width / ratio }
+      const currentStageSize = stageSizeRef.current
+
+      if (
+        Math.abs(currentStageSize.width - nextStageSize.width) < 0.5 &&
+        Math.abs(currentStageSize.height - nextStageSize.height) < 0.5
+      ) return
+
+      stageSizeRef.current = nextStageSize
+      setStageSize(nextStageSize)
       markCompositionDirty()
     }
 
@@ -370,7 +399,7 @@ function App() {
       setConnectorTarget(nextTarget)
       markCompositionDirty()
     }
-  }, [photo, vibeId, currentText, bubbleKind, connectorTarget, position.x, position.y, stageSize.width, stageSize.height, detectionResult, markCompositionDirty])
+  }, [photo, vibeId, currentText, bubbleKind, connectorTarget, position.x, position.y, bubbleScale, stageSize.width, stageSize.height, detectionResult, markCompositionDirty])
 
   const handleHome = (event: ReactMouseEvent<HTMLAnchorElement>) => {
     event.preventDefault()
@@ -381,6 +410,7 @@ function App() {
     }
     resetForNewPhoto()
     setPhoto(null)
+    stageSizeRef.current = { width: 0, height: 0 }
     setStageSize({ width: 0, height: 0 })
     setIsDragging(false)
     setIsDraggingTarget(false)
@@ -398,12 +428,12 @@ function App() {
     setSuggestionBatch(0)
     setCurrentText('')
     setCustomOpen(false)
-    setBubbleKind('thought')
     setConnectorTarget(defaultConnectorTarget)
     setCurveDirection(1)
     curveDirectionInitializedRef.current = false
     setBubbleGeometry(null)
     setPosition(initialPosition)
+    setBubbleScale(1)
     setDownloaded(false)
     setDetectionResult(null)
     setPlacementResult(null)
@@ -456,7 +486,6 @@ function App() {
     setSuggestionBatch(0)
     setCurrentText(vibe.lines[0])
     setCustomOpen(false)
-    setBubbleKind(vibe.defaultBubble)
     if (!manualConnectorOverrideRef.current) setConnectorTarget(defaultConnectorTarget)
     if (!manualBubbleOverrideRef.current) setPosition(initialPosition)
     if (!manualBubbleOverrideRef.current) {
@@ -567,6 +596,15 @@ function App() {
       : { minX: 16, maxX: 84, minY: 16, maxY: 82 }
     const nextX = clamp(nextPosition.x, bounds.minX, bounds.maxX)
     setPosition({ x: nextX, y: clamp(nextPosition.y, bounds.minY, bounds.maxY) })
+    markCompositionDirty()
+  }
+
+  const adjustBubbleScale = (delta: number) => {
+    manualBubbleOverrideRef.current = true
+    setBubbleScale((current) => {
+      const next = clamp(current + delta, minBubbleScale, maxBubbleScale)
+      return Math.round(next * 100) / 100
+    })
     markCompositionDirty()
   }
 
@@ -698,25 +736,37 @@ function App() {
     context: CanvasRenderingContext2D,
     canvasWidth: number,
     canvasHeight: number,
+    logoImage: HTMLImageElement,
   ) => {
     const shortEdge = Math.min(canvasWidth, canvasHeight)
-    const fontSize = Math.max(16, Math.min(46, shortEdge * 0.036))
-    const horizontalPadding = fontSize * 0.62
-    const verticalPadding = fontSize * 0.36
-    const cornerRadius = fontSize * 0.64
+    const logoWidth = Math.max(148, Math.min(280, Math.round(shortEdge * 0.15)))
+    const logoHeight = Math.max(1, Math.round(logoWidth * logoImage.naturalHeight / logoImage.naturalWidth))
+    const horizontalPadding = Math.round(logoHeight * 0.42)
+    const verticalPadding = Math.round(logoHeight * 0.3)
+    const cornerRadius = Math.min(
+      (logoHeight + verticalPadding * 2) / 2,
+      logoHeight * 0.64,
+    )
     const edgeInset = Math.max(12, shortEdge * 0.024)
-
-    context.save()
-    context.font = `800 ${fontSize}px "Manrope", "Avenir Next", Avenir, "Segoe UI", sans-serif`
-    context.textAlign = 'center'
-    context.textBaseline = 'middle'
-
-    const label = 'petsays.app'
-    const textWidth = context.measureText(label).width
-    const pillWidth = textWidth + horizontalPadding * 2
-    const pillHeight = fontSize + verticalPadding * 2
+    const pillWidth = logoWidth + horizontalPadding * 2
+    const pillHeight = logoHeight + verticalPadding * 2
     const x = canvasWidth - edgeInset - pillWidth
     const y = canvasHeight - edgeInset - pillHeight
+
+    const logoCanvas = document.createElement('canvas')
+    logoCanvas.width = logoWidth
+    logoCanvas.height = logoHeight
+    const logoContext = logoCanvas.getContext('2d')
+    if (!logoContext) return
+
+    logoContext.imageSmoothingEnabled = true
+    logoContext.imageSmoothingQuality = 'high'
+    logoContext.drawImage(logoImage, 0, 0, logoWidth, logoHeight)
+    logoContext.globalCompositeOperation = 'source-in'
+    logoContext.fillStyle = 'rgba(255, 253, 248, 0.98)'
+    logoContext.fillRect(0, 0, logoWidth, logoHeight)
+
+    context.save()
 
     context.beginPath()
     context.moveTo(x + cornerRadius, y)
@@ -737,9 +787,9 @@ function App() {
 
     context.fillStyle = 'rgba(32, 31, 28, 0.68)'
     context.fill()
-
-    context.fillStyle = 'rgba(255, 253, 248, 0.97)'
-    context.fillText(label, x + pillWidth / 2, y + pillHeight / 2 + fontSize * 0.02)
+    context.imageSmoothingEnabled = true
+    context.imageSmoothingQuality = 'high'
+    context.drawImage(logoCanvas, x + horizontalPadding, y + verticalPadding, logoWidth, logoHeight)
     context.restore()
   }
 
@@ -754,8 +804,11 @@ function App() {
 
     const image = new window.Image()
     image.src = photo.src
+    const logoImage = new window.Image()
+    logoImage.src = '/brand/petsays-wordmark.png'
     await document.fonts.ready
     await image.decode()
+    await logoImage.decode()
 
     const stageRect = stageRef.current.getBoundingClientRect()
     const bubbleRect = bubbleGroupRef.current.getBoundingClientRect()
@@ -770,10 +823,10 @@ function App() {
     context.drawImage(image, 0, 0, canvas.width, canvas.height)
 
     const computed = window.getComputedStyle(bubbleTextRef.current)
-    const fontSize = Number.parseFloat(computed.fontSize) * scale
-    const padding = Number.parseFloat(computed.paddingLeft) * scale
+    const fontSize = Number.parseFloat(computed.fontSize) * bubbleScale * scale
+    const padding = Number.parseFloat(computed.paddingLeft) * bubbleScale * scale
     const lineHeightValue = Number.parseFloat(computed.lineHeight)
-    const lineHeight = (Number.isFinite(lineHeightValue) ? lineHeightValue : fontSize * 1.22) * scale
+    const lineHeight = (Number.isFinite(lineHeightValue) ? lineHeightValue * bubbleScale : fontSize * 1.22) * scale
 
     const bubbleX = (bubbleRect.left - stageRect.left) * scale
     const bubbleY = (bubbleRect.top - stageRect.top) * scale
@@ -813,7 +866,7 @@ function App() {
     lines.forEach((line, index) => context.fillText(line, textX, firstY + index * lineHeight))
     context.restore()
 
-    drawPetSaysBrandMark(context, canvas.width, canvas.height)
+    drawPetSaysBrandMark(context, canvas.width, canvas.height, logoImage)
 
     const link = document.createElement('a')
     const jpegBlob = await new Promise<Blob>((resolve, reject) => {
@@ -848,50 +901,41 @@ function App() {
           <>
             <section className="intro-hero" aria-labelledby="hero-title">
               <div className="hero-action-panel">
+                <DecorativeSpots page="landing" />
                 <div className="hero-copy">
                   <p className="eyebrow">For photos that look like they have something to say</p>
-                  <h1 id="hero-title">Make your pet talk.</h1>
+                  <h1 id="hero-title" className="hero-title">Make your pet talk.</h1>
                   <p className="hero-subtitle">Upload a photo. Pick a vibe. Make it funny.</p>
                 </div>
-
-                <label className="upload-card" htmlFor="photo-upload">
-                  <span className="upload-icon" aria-hidden="true">↑</span>
-                  <span className="upload-card-title">Upload a photo</span>
-                  <span className="upload-card-hint">Camera roll or camera</span>
-                </label>
-                <p className="upload-trust">No signup · Free to use</p>
-                <input
-                  ref={fileInputRef}
-                  id="photo-upload"
-                  className="visually-hidden"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileInput}
-                  aria-label="Upload a pet photo"
-                />
+                <HeroUploadRail variant="desktop" />
+                <HeroSteps variant="desktop" />
               </div>
 
-              <ExampleCarousel />
+              <HeroDemo onUpload={() => fileInputRef.current?.click()} />
+
+              <HeroSteps variant="mobile" />
+
+              <input
+                ref={fileInputRef}
+                id="photo-upload"
+                className="visually-hidden"
+                type="file"
+                accept="image/*"
+                onChange={handleFileInput}
+                aria-label="Upload a pet photo"
+              />
             </section>
 
-            <section className="how-section" aria-labelledby="how-title">
-              <div className="section-heading compact-heading">
-                <p className="eyebrow">Three tiny moves</p>
-                <h2 id="how-title">Upload. Pick a vibe. Download.</h2>
-              </div>
-              <ol className="how-list">
-                <li><span>01</span><strong>Upload</strong><small>Choose the face.</small></li>
-                <li><span>02</span><strong>Pick a vibe</strong><small>Trust your instincts.</small></li>
-                <li><span>03</span><strong>Download</strong><small>Keep the joke.</small></li>
-              </ol>
-            </section>
           </>
         ) : (
-          <section className="maker-section" aria-labelledby="maker-title">
+          <section className={`maker-section ${selectedVibe ? 'has-result' : 'is-vibe-picker'}`} aria-labelledby="maker-title">
+            <DecorativeSpots page={selectedVibe ? 'result' : 'picker'} />
             <div className="maker-topline">
               <div>
-                <p className="eyebrow">{selectedVibe ? 'The translation is happening' : 'Photo received'}</p>
-                <h1 id="maker-title">{selectedVibe ? 'Look what your pet is saying.' : 'Pick a vibe.'}</h1>
+                {!selectedVibe && <p className="eyebrow">Photo received</p>}
+                <h1 id="maker-title" className={selectedVibe ? 'result-page-title' : 'vibe-picker-title'}>
+                  {selectedVibe ? 'Your pet has opinions.' : 'Pick a vibe.'}
+                </h1>
               </div>
             </div>
 
@@ -906,7 +950,7 @@ function App() {
             />
 
             <div className={`maker-layout ${selectedVibe ? 'has-result' : ''}`}>
-              <div className="photo-column">
+              <div className={`photo-column ${photo.naturalWidth / photo.naturalHeight > 1.15 ? 'photo-column-wide' : ''}`}>
                 <div className="photo-column-toolbar">
                   <label className="change-photo-button" htmlFor="photo-upload">
                     <span className="change-photo-icon" aria-hidden="true">↻</span>
@@ -956,17 +1000,19 @@ function App() {
                         style={{
                           left: `${position.x}%`,
                           top: `${position.y}%`,
+                          '--bubble-scale': bubbleScale,
                           '--bubble-outer-max-width': `${bubbleOuterMaxWidth}px`,
                           '--bubble-text-max-width': `${bubbleTextMaxWidth}px`,
                         } as CSSProperties}
+                        data-bubble-scale={bubbleScale.toFixed(2)}
                         onPointerDown={handlePointerDown}
                         onPointerMove={handlePointerMove}
                         onPointerUp={handlePointerUp}
                         onPointerCancel={handlePointerUp}
                         onKeyDown={handleBubbleKeyDown}
-                        role="button"
+                        role="group"
                         tabIndex={0}
-                        aria-label="Drag bubble to move it around the photo"
+                        aria-label="Thought bubble. Use arrow keys to move it around the photo."
                         title="Drag me"
                       >
                         <BubbleGraphic
@@ -994,8 +1040,56 @@ function App() {
                       </button>
                     )}
                   </div>
+                  {selectedVibe && currentText && (
+                    <div className="bubble-size-row" role="group" aria-label="Adjust thought bubble size">
+                      <span className="bubble-size-label">Bubble size</span>
+                      <div className="bubble-size-control">
+                        <button
+                          type="button"
+                          className="bubble-size-button"
+                          onClick={() => adjustBubbleScale(-bubbleScaleStep)}
+                          disabled={bubbleScale <= minBubbleScale}
+                          aria-label="Decrease bubble size"
+                          title="Make bubble smaller"
+                        >
+                          −
+                        </button>
+                        <span className="bubble-size-divider" aria-hidden="true" />
+                        <button
+                          type="button"
+                          className="bubble-size-button"
+                          onClick={() => adjustBubbleScale(bubbleScaleStep)}
+                          disabled={bubbleScale >= maxBubbleScale}
+                          aria-label="Increase bubble size"
+                          title="Make bubble larger"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                {selectedVibe && <p className="drag-hint">Drag the bubble. Point the tail.</p>}
+                {selectedVibe && (
+                  <p className="drag-hint">
+                    <span className="drag-hint-copy">
+                      <span className="drag-hint-line">Drag the bubble.</span>
+                      <span className="drag-hint-line">Point the tail.</span>
+                      <span className="drag-hint-line">Tap to curve it.</span>
+                    </span>
+                    <span className="drag-hint-heart" aria-hidden="true">♡</span>
+                  </p>
+                )}
+                {selectedVibe && (
+                  <div className="result-completion">
+                    <button type="button" className="download-button" onClick={handleDownload}>
+                      <span>Download</span>
+                      <span aria-hidden="true">↓</span>
+                    </button>
+                    <p className={`download-note ${downloaded ? 'is-done' : ''}`}>
+                      {downloaded ? 'Saved as a photo. Make another?' : 'Free, includes a small PetSays mark, no signup.'}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="controls-column">
@@ -1029,35 +1123,13 @@ function App() {
                 ) : (
                   <div className="result-controls" aria-live="polite">
                     <div className="control-heading result-heading">
-                      <p className="eyebrow">{selectedVibe.label} · {selectedVibe.eyebrow}</p>
-                      <h2>Does this sound right?</h2>
-                    </div>
-
-                    <div className="bubble-tools">
-                      <div className="bubble-switch" role="group" aria-label="Bubble style">
-                        <button
-                          type="button"
-                          className={bubbleKind === 'thought' ? 'active' : ''}
-                          onClick={() => {
-                            setBubbleKind('thought')
-                            markCompositionDirty()
-                          }}
-                          aria-pressed={bubbleKind === 'thought'}
-                        >
-                          Thought
-                        </button>
-                        <button
-                          type="button"
-                          className={bubbleKind === 'speech' ? 'active' : ''}
-                          onClick={() => {
-                            setBubbleKind('speech')
-                            markCompositionDirty()
-                          }}
-                          aria-pressed={bubbleKind === 'speech'}
-                        >
-                          Speech
+                      <div className="result-vibe-row">
+                        <p className="eyebrow">{selectedVibe.label} · {selectedVibe.eyebrow}</p>
+                        <button type="button" className="back-to-vibes" onClick={() => setVibeId(null)}>
+                          ← Change vibe
                         </button>
                       </div>
+                      <h2>Does this sound right?</h2>
                     </div>
 
                     <div className="line-list" aria-label="Alternate funny lines">
@@ -1115,17 +1187,6 @@ function App() {
                       </div>
                     )}
 
-                    <button type="button" className="download-button" onClick={handleDownload}>
-                      <span>Download</span>
-                      <span aria-hidden="true">↓</span>
-                    </button>
-                    <p className={`download-note ${downloaded ? 'is-done' : ''}`}>
-                      {downloaded ? 'Saved as a photo. Make another?' : 'Free, includes a small PetSays mark, no signup.'}
-                    </p>
-
-                    <button type="button" className="back-to-vibes" onClick={() => setVibeId(null)}>
-                      ← Try a different vibe
-                    </button>
                   </div>
                 )}
               </div>

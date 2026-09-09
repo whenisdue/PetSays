@@ -310,21 +310,14 @@ export function getThoughtConnectorDots(
   const control = toPixels(curve.control, stageWidth, stageHeight)
   const end = toPixels(curve.target, stageWidth, stageHeight)
   const pathLength = getQuadraticLength(start, control, end)
-  const largestRadius = clamp(bubble.width * stageWidth * 0.032, 5, 11)
-  const dotCount = pathLength < largestRadius * 2.2 ? 1 : pathLength < largestRadius * 5.5 ? 2 : 3
-  const firstDistance = Math.min(pathLength * 0.22, largestRadius * 0.45)
-  const distances =
-    dotCount === 1
-      ? [firstDistance]
-      : dotCount === 2
-        ? [firstDistance, pathLength * 0.86]
-        : [firstDistance, pathLength * 0.58, pathLength * 0.9]
-  const radii =
-    dotCount === 1
-      ? [largestRadius]
-      : dotCount === 2
-        ? [largestRadius, largestRadius * 0.48]
-        : [largestRadius, largestRadius * 0.66, largestRadius * 0.38]
+  const largestRadius = clamp(bubble.width * stageWidth * 0.035, 5.5, 12)
+  const radiusScale = clamp(pathLength / (largestRadius * 5.2), 0.62, 1)
+  const distances = [pathLength * 0.2, pathLength * 0.56, pathLength * 0.86]
+  const radii = [
+    largestRadius * radiusScale,
+    largestRadius * 0.64 * radiusScale,
+    largestRadius * 0.38 * radiusScale,
+  ]
 
   return distances.map((distance, index) => {
     const sampled = sampleQuadraticAtDistance(start, control, end, distance).point
