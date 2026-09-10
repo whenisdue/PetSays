@@ -161,6 +161,7 @@ function App() {
   const [isDragging, setIsDragging] = useState(false)
   const [isDraggingTarget, setIsDraggingTarget] = useState(false)
   const [downloaded, setDownloaded] = useState(false)
+  const [shareStatus, setShareStatus] = useState<string | null>(null)
   const [detectionResult, setDetectionResult] = useState<PetDetectionResult | null>(null)
   const [placementResult, setPlacementResult] = useState<BubblePlacementResult | null>(null)
 
@@ -243,7 +244,10 @@ function App() {
     curveDirection,
   ])
 
-  const markCompositionDirty = useCallback(() => setDownloaded(false), [])
+  const markCompositionDirty = useCallback(() => {
+    setDownloaded(false)
+    setShareStatus(null)
+  }, [])
 
   useEffect(() => {
     if (!customOpen) return
@@ -434,7 +438,7 @@ function App() {
     setBubbleGeometry(null)
     setPosition(initialPosition)
     setBubbleScale(1)
-    setDownloaded(false)
+    markCompositionDirty()
     setDetectionResult(null)
     setPlacementResult(null)
     smartPlacementAttemptedRef.current = false
@@ -497,7 +501,7 @@ function App() {
       curveDirectionInitializedRef.current = false
     }
     setBubbleGeometry(null)
-    setDownloaded(false)
+    markCompositionDirty()
   }
 
   const chooseLine = (index: number) => {
@@ -505,7 +509,7 @@ function App() {
     setLineIndex(index)
     setCurrentText(selectedVibe.lines[index])
     setCustomOpen(false)
-    setDownloaded(false)
+    markCompositionDirty()
   }
 
   const handleAnother = () => {
@@ -527,7 +531,7 @@ function App() {
     setLineIndex(nextIndex)
     setCurrentText(selectedVibe.lines[nextIndex])
     setCustomOpen(false)
-    setDownloaded(false)
+    markCompositionDirty()
   }
 
   const updateBubblePosition = useCallback((centerX: number, centerY: number) => {
@@ -793,14 +797,14 @@ function App() {
     context.restore()
   }
 
-  const handleDownload = async () => {
+  const createPetSaysImageBlob = async (): Promise<Blob | null> => {
     if (
       !photo ||
       !stageRef.current ||
       !bubbleGroupRef.current ||
       !bubbleTextRef.current ||
       !resolvedConnector
-    ) return
+    ) return null
 
     const image = new window.Image()
     image.src = photo.src
@@ -818,7 +822,7 @@ function App() {
     canvas.width = photo.naturalWidth
     canvas.height = photo.naturalHeight
     const context = canvas.getContext('2d')
-    if (!context) return
+    if (!context) return null
 
     context.drawImage(image, 0, 0, canvas.width, canvas.height)
 
@@ -868,8 +872,7 @@ function App() {
 
     drawPetSaysBrandMark(context, canvas.width, canvas.height, logoImage)
 
-    const link = document.createElement('a')
-    const jpegBlob = await new Promise<Blob>((resolve, reject) => {
+    return new Promise<Blob>((resolve, reject) => {
       canvas.toBlob(
         (blob) => {
           if (blob) resolve(blob)
@@ -879,12 +882,66 @@ function App() {
         jpegExportQuality,
       )
     })
+  }
+
+  const getExportFileName = () => `petsays-${vibeId ?? 'pet'}.jpg`
+
+  const downloadJpegBlob = (jpegBlob: Blob) => {
     const downloadUrl = URL.createObjectURL(jpegBlob)
-    link.download = `petsays-${vibeId ?? 'pet'}.jpg`
+    const link = document.createElement('a')
+    link.download = getExportFileName()
     link.href = downloadUrl
     link.click()
     window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0)
-    setDownloaded(true)
+  }
+
+  const handleDownload = async () => {
+    try {
+      const jpegBlob = await createPetSaysImageBlob()
+      if (!jpegBlob) return
+      downloadJpegBlob(jpegBlob)
+      setShareStatus(null)
+      setDownloaded(true)
+    } catch {
+      setShareStatus('Could not make the image. Please try again.')
+    }
+  }
+
+  const handleShare = async () => {
+    try {
+      const jpegBlob = await createPetSaysImageBlob()
+      if (!jpegBlob) return
+
+      const file = new File([jpegBlob], getExportFileName(), { type: 'image/jpeg' })
+      let supportsFileShare = false
+      if (typeof navigator.share === 'function' && typeof navigator.canShare === 'function') {
+        try {
+          supportsFileShare = navigator.canShare({ files: [file] })
+        } catch {
+          supportsFileShare = false
+        }
+      }
+
+      if (!supportsFileShare) {
+        downloadJpegBlob(jpegBlob)
+        setDownloaded(true)
+        setShareStatus("Sharing isn't available here, so we saved the image instead.")
+        return
+      }
+
+      try {
+        await navigator.share({ files: [file] })
+        setDownloaded(false)
+        setShareStatus('Shared via your device.')
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        downloadJpegBlob(jpegBlob)
+        setDownloaded(true)
+        setShareStatus("Sharing didn't open, so we saved the image instead.")
+      }
+    } catch {
+      setShareStatus('Could not make the image. Please try again.')
+    }
   }
 
   return (
@@ -1079,17 +1136,6 @@ function App() {
                     <span className="drag-hint-heart" aria-hidden="true">♡</span>
                   </p>
                 )}
-                {selectedVibe && (
-                  <div className="result-completion">
-                    <button type="button" className="download-button" onClick={handleDownload}>
-                      <span>Download</span>
-                      <span aria-hidden="true">↓</span>
-                    </button>
-                    <p className={`download-note ${downloaded ? 'is-done' : ''}`}>
-                      {downloaded ? 'Saved as a photo. Make another?' : 'Free, includes a small PetSays mark, no signup.'}
-                    </p>
-                  </div>
-                )}
               </div>
 
               <div className="controls-column">
@@ -1179,13 +1225,34 @@ function App() {
                           rows={2}
                           onChange={(event) => {
                             setCurrentText(event.target.value)
-                            setDownloaded(false)
+                            markCompositionDirty()
                           }}
                           placeholder="What is your pet thinking?"
                         />
                         <span className="character-count">{currentText.length}/120</span>
                       </div>
                     )}
+
+                    <div className="result-completion">
+                      <div className="completion-actions">
+                        <button type="button" className="download-button" onClick={handleDownload}>
+                          <span>Download</span>
+                          <span aria-hidden="true">↓</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="share-button"
+                          onClick={handleShare}
+                          aria-label="Share your PetSays image"
+                        >
+                          <span className="share-icon" aria-hidden="true">↗</span>
+                          <span>Share</span>
+                        </button>
+                      </div>
+                      <p className={`download-note ${downloaded || shareStatus ? 'is-done' : ''}`}>
+                        {shareStatus ?? (downloaded ? 'Saved as a photo. Make another?' : 'Free, includes a small PetSays mark, no signup.')}
+                      </p>
+                    </div>
 
                   </div>
                 )}
