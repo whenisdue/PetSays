@@ -32,6 +32,7 @@ import {
 } from './utils/bubblePlacement'
 import { bubbleBodySvg } from './utils/bubbleShell'
 import { detectPetImage, type PetDetectionResult } from './utils/petDetection'
+import type { PendingLine } from './utils/pendingLine'
 
 type LoadedPhoto = {
   src: string
@@ -130,9 +131,10 @@ function wrapText(context: CanvasRenderingContext2D, text: string, maxWidth: num
 
 type AppProps = {
   initialFile?: File | null
+  pendingLine?: PendingLine | null
 }
 
-function App({ initialFile = null }: AppProps) {
+function App({ initialFile = null, pendingLine = null }: AppProps) {
   const [photo, setPhoto] = useState<LoadedPhoto | null>(null)
   const [vibeId, setVibeId] = useState<VibeId | null>(null)
   const [lineIndex, setLineIndex] = useState(0)
@@ -170,6 +172,7 @@ function App({ initialFile = null }: AppProps) {
   const curveDirectionInitializedRef = useRef(false)
   const uploadGenerationRef = useRef(0)
   const initialFileHandledRef = useRef<File | null>(null)
+  const pendingLineRef = useRef<PendingLine | null>(pendingLine)
   const handleFileRef = useRef<(file: File | undefined) => void>(() => undefined)
   const smartPlacementAttemptedRef = useRef(false)
   const manualBubbleOverrideRef = useRef(false)
@@ -439,6 +442,9 @@ function App({ initialFile = null }: AppProps) {
   const handleFile = (file: File | undefined) => {
     if (!file || !file.type.startsWith('image/')) return
 
+    const pendingLineForPhoto = pendingLineRef.current
+    pendingLineRef.current = null
+
     const uploadGeneration = uploadGenerationRef.current + 1
     uploadGenerationRef.current = uploadGeneration
     const src = URL.createObjectURL(file)
@@ -457,6 +463,17 @@ function App({ initialFile = null }: AppProps) {
         naturalWidth: image.naturalWidth,
         naturalHeight: image.naturalHeight,
       })
+      if (pendingLineForPhoto) {
+        const pendingVibe = getVibe(pendingLineForPhoto.vibeId)
+        if (pendingVibe.id === pendingLineForPhoto.vibeId) {
+          const pendingLineIndex = pendingVibe.lines.indexOf(pendingLineForPhoto.text)
+          setVibeId(pendingVibe.id)
+          setLineIndex(pendingLineIndex >= 0 ? pendingLineIndex : 0)
+          setSuggestionBatch(0)
+          setCurrentText(pendingLineForPhoto.text)
+          setCustomOpen(false)
+        }
+      }
       void detectPetImage(image).then((result) => {
         if (uploadGeneration !== uploadGenerationRef.current) return
         setDetectionResult(result)

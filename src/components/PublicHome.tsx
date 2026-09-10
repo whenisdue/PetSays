@@ -5,6 +5,7 @@ import type {
 } from 'react'
 import { HeroDemo, HeroSteps, HeroUploadRail } from './ExampleCarousel'
 import { DecorativeSpots } from './DecorativeSpots'
+import { PublicSiteFooter, PublicSiteHeader } from './PublicSiteChrome'
 
 type PublicHomeProps = {
   fileInputRef?: RefObject<HTMLInputElement | null>
@@ -23,15 +24,10 @@ export function PublicHome({
 }: PublicHomeProps) {
   return (
     <div className="app-shell">
-      <header className="site-header">
-        <a className="wordmark" href="/" onClick={onHome} aria-label="PetSays home">
-          <span>PetSays</span>
-        </a>
-        <span className="header-note">Small tool. Big opinions.</span>
-      </header>
+      <PublicSiteHeader onHome={onHome} />
 
       <main id="top">
-        <section className="intro-hero" aria-labelledby="hero-title">
+        <section id="make-image" className="intro-hero" aria-labelledby="hero-title">
           <div className="hero-action-panel">
             <DecorativeSpots page="landing" />
             <div className="hero-copy">
@@ -57,12 +53,10 @@ export function PublicHome({
             aria-label="Upload a pet photo"
           />
         </section>
+        <p className="home-ideas-link">Need a line? <a href="/pet-thought-bubble-ideas/">Browse funny pet thought bubble ideas.</a></p>
       </main>
 
-      <footer className="site-footer">
-        <span>PetSays</span>
-        <span>Small tool. Big opinions.</span>
-      </footer>
+      <PublicSiteFooter />
     </div>
   )
 }
