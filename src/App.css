@@ -1055,6 +1055,14 @@ h2 {
   margin-top: 18px;
 }
 
+.result-completion-mobile {
+  display: none;
+}
+
+.result-completion-desktop {
+  display: block;
+}
+
 .completion-actions {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(120px, 0.65fr);
@@ -2056,6 +2064,21 @@ h2 {
 }
 
 @media (max-width: 500px) {
+  .result-completion-mobile {
+    display: block;
+    margin-top: 16px;
+  }
+
+  .result-completion-desktop {
+    display: none;
+  }
+
+  .stage-host .bubble-size-row {
+    order: -1;
+    margin-top: 0;
+    margin-bottom: 12px;
+  }
+
   .app-shell {
     padding: 0 14px;
   }

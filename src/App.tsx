@@ -1136,6 +1136,41 @@ function App() {
                     <span className="drag-hint-heart" aria-hidden="true">♡</span>
                   </p>
                 )}
+                {selectedVibe && (
+                  <div className="result-completion result-completion-mobile">
+                    <div className="completion-actions">
+                      <button
+                        type="button"
+                        className="download-button"
+                        onClick={handleDownload}
+                      >
+                        <span>Download</span>
+                        <span aria-hidden="true">↓</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="share-button"
+                        onClick={handleShare}
+                        aria-label="Share your PetSays image"
+                      >
+                        <span className="share-icon" aria-hidden="true">↗</span>
+                        <span>Share</span>
+                      </button>
+                    </div>
+
+                    <p
+                      className={`download-note ${
+                        downloaded || shareStatus ? 'is-done' : ''
+                      }`}
+                    >
+                      {shareStatus ??
+                        (downloaded
+                          ? 'Saved as a photo. Make another?'
+                          : 'Free, includes a small PetSays mark, no signup.')}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="controls-column">
@@ -1233,7 +1268,7 @@ function App() {
                       </div>
                     )}
 
-                    <div className="result-completion">
+                    <div className="result-completion result-completion-desktop">
                       <div className="completion-actions">
                         <button type="button" className="download-button" onClick={handleDownload}>
                           <span>Download</span>
