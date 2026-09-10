@@ -1,10 +1,13 @@
 import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
+import { hydrateRoot } from 'react-dom/client'
+import '@fontsource/fredoka/latin-700.css'
 import './index.css'
-import App from './App.tsx'
+import './App.css'
+import { ClientApp } from './ClientApp'
 
-createRoot(document.getElementById('root')!).render(
+hydrateRoot(
+  document.getElementById('root')!,
   <StrictMode>
-    <App />
+    <ClientApp />
   </StrictMode>,
 )

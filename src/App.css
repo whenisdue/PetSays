@@ -2066,28 +2066,66 @@ h2 {
 @media (max-width: 500px) {
   /* Pick-a-vibe screen: the photo is now a compact confirmation preview.
      The vibe choices are the primary action on this screen. */
+  .maker-section.is-vibe-picker .maker-topline {
+    margin-bottom: 8px;
+  }
+
+  .maker-section.is-vibe-picker .photo-column-toolbar {
+    margin-bottom: 4px;
+  }
+
   .maker-section.is-vibe-picker .stage-host {
-    width: min(62vw, 260px);
+    width: min(44vw, 170px);
     min-height: 0;
     margin-right: auto;
     margin-left: auto;
   }
 
-  .maker-section.is-vibe-picker .photo-column-toolbar {
-    margin-bottom: 8px;
-  }
-
   .maker-section.is-vibe-picker .maker-layout {
-    gap: 20px;
+    gap: 8px;
   }
 
   .maker-section.is-vibe-picker .photo-stage {
-    border-width: 6px;
-    border-radius: 22px 22px 34px 34px;
+    width: 100% !important;
+    height: 175px !important;
+    aspect-ratio: auto !important;
+    border-width: 4px;
+    border-radius: 18px 18px 26px 26px;
+  }
+
+  .maker-section.is-vibe-picker .uploaded-photo {
+    object-fit: cover;
+    object-position: center center;
   }
 
   .maker-section.is-vibe-picker .controls-column {
     margin-top: 0;
+  }
+
+  .maker-section.is-vibe-picker .vibe-picker .control-heading {
+    margin-bottom: 8px;
+  }
+
+  .maker-section.is-vibe-picker .vibe-card {
+    min-height: 78px;
+    padding: 5px;
+  }
+
+  .maker-section.is-vibe-picker .vibe-title-panel {
+    min-height: 66px;
+    padding: 8px 8px;
+  }
+
+  .maker-section.is-vibe-picker .vibe-card-copy {
+    display: none;
+  }
+
+  .maker-section.is-vibe-picker .vibe-title-panel strong {
+    font-size: 1rem;
+  }
+
+  .maker-section.is-vibe-picker .vibe-grid {
+    gap: 6px;
   }
 
   .result-completion-mobile {

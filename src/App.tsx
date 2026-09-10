@@ -13,8 +13,8 @@ import {
 } from 'react'
 import { BubbleGraphic } from './components/BubbleGraphic'
 import { BubbleConnector } from './components/BubbleConnector'
-import { HeroDemo, HeroSteps, HeroUploadRail } from './components/ExampleCarousel'
-import '@fontsource/fredoka/latin-700.css'
+import { DecorativeSpots } from './components/DecorativeSpots'
+import { PublicHome } from './components/PublicHome'
 import { getVibe, vibes, type Vibe, type VibeId } from './data/presets'
 import {
   bubbleConnectorSvg,
@@ -32,7 +32,6 @@ import {
 } from './utils/bubblePlacement'
 import { bubbleBodySvg } from './utils/bubbleShell'
 import { detectPetImage, type PetDetectionResult } from './utils/petDetection'
-import './App.css'
 
 type LoadedPhoto = {
   src: string
@@ -129,22 +128,11 @@ function wrapText(context: CanvasRenderingContext2D, text: string, maxWidth: num
   return lines
 }
 
-type DecorativePage = 'landing' | 'picker' | 'result'
-
-function DecorativeSpots({ page }: { page: DecorativePage }) {
-  return (
-    <div className={`vibe-atmosphere vibe-atmosphere-${page}`} aria-hidden="true">
-      <span className="vibe-spot vibe-spot-mint" />
-      <span className="vibe-spot vibe-spot-lilac" />
-      <span className="vibe-spot vibe-spot-peach" />
-      <span className="vibe-spot vibe-spot-sun" />
-      <span className="vibe-spot vibe-spot-sky" />
-      <span className="vibe-spot vibe-spot-coral" />
-    </div>
-  )
+type AppProps = {
+  initialFile?: File | null
 }
 
-function App() {
+function App({ initialFile = null }: AppProps) {
   const [photo, setPhoto] = useState<LoadedPhoto | null>(null)
   const [vibeId, setVibeId] = useState<VibeId | null>(null)
   const [lineIndex, setLineIndex] = useState(0)
@@ -181,6 +169,8 @@ function App() {
   const targetDragThresholdRef = useRef(8)
   const curveDirectionInitializedRef = useRef(false)
   const uploadGenerationRef = useRef(0)
+  const initialFileHandledRef = useRef<File | null>(null)
+  const handleFileRef = useRef<(file: File | undefined) => void>(() => undefined)
   const smartPlacementAttemptedRef = useRef(false)
   const manualBubbleOverrideRef = useRef(false)
   const manualConnectorOverrideRef = useRef(false)
@@ -479,10 +469,20 @@ function App() {
     image.src = src
   }
 
+  useEffect(() => {
+    handleFileRef.current = handleFile
+  })
+
   const handleFileInput = (event: ChangeEvent<HTMLInputElement>) => {
     handleFile(event.target.files?.[0])
     event.target.value = ''
   }
+
+  useEffect(() => {
+    if (!initialFile || initialFileHandledRef.current === initialFile) return
+    initialFileHandledRef.current = initialFile
+    handleFileRef.current(initialFile)
+  }, [initialFile])
 
   const handleVibe = (vibe: Vibe) => {
     setVibeId(vibe.id)
@@ -944,6 +944,17 @@ function App() {
     }
   }
 
+  if (!photo) {
+    return (
+      <PublicHome
+        fileInputRef={fileInputRef}
+        onFileChange={handleFileInput}
+        onHome={handleHome}
+        onUpload={() => fileInputRef.current?.click()}
+      />
+    )
+  }
+
   return (
     <div className="app-shell">
       <header className="site-header">
@@ -954,38 +965,7 @@ function App() {
       </header>
 
       <main id="top">
-        {!photo ? (
-          <>
-            <section className="intro-hero" aria-labelledby="hero-title">
-              <div className="hero-action-panel">
-                <DecorativeSpots page="landing" />
-                <div className="hero-copy">
-                  <p className="eyebrow">For photos that look like they have something to say</p>
-                  <h1 id="hero-title" className="hero-title">Make your pet talk.</h1>
-                  <p className="hero-subtitle">Upload a photo. Pick a vibe. Make it funny.</p>
-                </div>
-                <HeroUploadRail variant="desktop" />
-                <HeroSteps variant="desktop" />
-              </div>
-
-              <HeroDemo onUpload={() => fileInputRef.current?.click()} />
-
-              <HeroSteps variant="mobile" />
-
-              <input
-                ref={fileInputRef}
-                id="photo-upload"
-                className="visually-hidden"
-                type="file"
-                accept="image/*"
-                onChange={handleFileInput}
-                aria-label="Upload a pet photo"
-              />
-            </section>
-
-          </>
-        ) : (
-          <section className={`maker-section ${selectedVibe ? 'has-result' : 'is-vibe-picker'}`} aria-labelledby="maker-title">
+        <section className={`maker-section ${selectedVibe ? 'has-result' : 'is-vibe-picker'}`} aria-labelledby="maker-title">
             <DecorativeSpots page={selectedVibe ? 'result' : 'picker'} />
             <div className="maker-topline">
               <div>
@@ -1293,8 +1273,7 @@ function App() {
                 )}
               </div>
             </div>
-          </section>
-        )}
+        </section>
       </main>
 
       <footer className="site-footer">
