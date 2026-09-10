@@ -743,7 +743,7 @@ function App() {
     logoImage: HTMLImageElement,
   ) => {
     const shortEdge = Math.min(canvasWidth, canvasHeight)
-    const logoWidth = Math.max(148, Math.min(280, Math.round(shortEdge * 0.15)))
+    const logoWidth = Math.max(160, Math.min(300, Math.round(shortEdge * 0.17)))
     const logoHeight = Math.max(1, Math.round(logoWidth * logoImage.naturalHeight / logoImage.naturalWidth))
     const horizontalPadding = Math.round(logoHeight * 0.42)
     const verticalPadding = Math.round(logoHeight * 0.3)
