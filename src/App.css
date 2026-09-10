@@ -2064,6 +2064,32 @@ h2 {
 }
 
 @media (max-width: 500px) {
+  /* Pick-a-vibe screen: the photo is now a compact confirmation preview.
+     The vibe choices are the primary action on this screen. */
+  .maker-section.is-vibe-picker .stage-host {
+    width: min(62vw, 260px);
+    min-height: 0;
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .maker-section.is-vibe-picker .photo-column-toolbar {
+    margin-bottom: 8px;
+  }
+
+  .maker-section.is-vibe-picker .maker-layout {
+    gap: 20px;
+  }
+
+  .maker-section.is-vibe-picker .photo-stage {
+    border-width: 6px;
+    border-radius: 22px 22px 34px 34px;
+  }
+
+  .maker-section.is-vibe-picker .controls-column {
+    margin-top: 0;
+  }
+
   .result-completion-mobile {
     display: block;
     margin-top: 16px;
