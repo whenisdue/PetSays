@@ -15,16 +15,28 @@ const heroPet = (fileName: string) => `/demo/hero-pets/${fileName}`
 
 const samples: Sample[] = [
   {
+    src: heroPet('hero-pet-01.jpg'),
+    alt: 'Finished PetSays example featuring pets in costume with funny bubbles',
+  },
+  {
+    src: heroPet('hero-pet-02.jpg'),
+    alt: 'Finished PetSays example featuring two dogs with funny bubbles',
+  },
+  {
+    src: heroPet('hero-pet-03.jpg'),
+    alt: 'Finished PetSays example featuring two dogs with funny bubbles',
+  },
+  {
+    src: heroPet('hero-pet-04.jpg'),
+    alt: 'Finished PetSays example featuring a pet in costume with a funny bubble',
+  },
+  {
     src: heroPet('hero-pet-05.jpg'),
-    alt: 'Finished PetSays example featuring a resting dog with a funny bubble',
+    alt: 'Finished PetSays example featuring a pet with a funny bubble',
   },
   {
     src: heroPet('hero-pet-06.jpg'),
     alt: 'Finished PetSays example featuring a cat with a funny bubble',
-  },
-  {
-    src: heroPet('hero-pet-03.jpg'),
-    alt: 'Finished PetSays example featuring a small dog with a funny bubble',
   },
 ]
 
