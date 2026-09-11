@@ -15,6 +15,10 @@ export function PublicSiteFooter() {
   return (
     <footer className="site-footer">
       <span>PetSays</span>
+      <nav className="site-footer-links" aria-label="Legal">
+        <a href="/privacy/">Privacy</a>
+        <a href="/terms/">Terms</a>
+      </nav>
       <span>Small tool. Big opinions.</span>
     </footer>
   )

@@ -14,6 +14,16 @@ const publicPages = [
     outputPath: 'pet-thought-bubble-ideas/index.html',
     metadataExport: 'ideasPageMetadata',
   },
+  {
+    render: 'renderPublicPrivacy',
+    outputPath: 'privacy/index.html',
+    metadataExport: 'privacyPageMetadata',
+  },
+  {
+    render: 'renderPublicTerms',
+    outputPath: 'terms/index.html',
+    metadataExport: 'termsPageMetadata',
+  },
 ]
 
 function escapeAttribute(value) {
@@ -50,6 +60,10 @@ function applyPageMetadata(html, metadata) {
   nextHtml = replaceHeadTag(nextHtml, /<meta name="twitter:description" content="[^"]*" \/>/, `<meta name="twitter:description" content="${description}" />`, 'twitter:description')
   nextHtml = replaceHeadTag(nextHtml, /<meta name="twitter:image" content="[^"]*" \/>/, `<meta name="twitter:image" content="${ogImage}" />`, 'twitter:image')
   nextHtml = replaceHeadTag(nextHtml, /<meta name="twitter:image:alt" content="[^"]*" \/>/, `<meta name="twitter:image:alt" content="${ogImageAlt}" />`, 'twitter:image:alt')
+
+  if (metadata.robots) {
+    nextHtml = nextHtml.replace('</head>', `    <meta name="robots" content="${escapeAttribute(metadata.robots)}" />\n  </head>`)
+  }
 
   return nextHtml
 }

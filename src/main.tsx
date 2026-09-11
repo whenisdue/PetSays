@@ -3,12 +3,11 @@ import { hydrateRoot } from 'react-dom/client'
 import '@fontsource/fredoka/latin-700.css'
 import './index.css'
 import './App.css'
-import { ClientApp } from './ClientApp'
 
 const root = document.getElementById('root')!
-const isIdeasPage = window.location.pathname.replace(/\/+$/, '') === '/pet-thought-bubble-ideas'
+const pagePath = window.location.pathname.replace(/\/+$/, '') || '/'
 
-if (isIdeasPage) {
+if (pagePath === '/pet-thought-bubble-ideas') {
   void import('./IdeasPageApp').then(({ IdeasPageApp }) => {
     hydrateRoot(
       root,
@@ -17,11 +16,22 @@ if (isIdeasPage) {
       </StrictMode>,
     )
   })
+} else if (pagePath === '/privacy' || pagePath === '/terms') {
+  void import('./LegalPageApp').then(({ LegalPageApp }) => {
+    hydrateRoot(
+      root,
+      <StrictMode>
+        <LegalPageApp page={pagePath === '/privacy' ? 'privacy' : 'terms'} />
+      </StrictMode>,
+    )
+  })
 } else {
-  hydrateRoot(
-    root,
-    <StrictMode>
-      <ClientApp />
-    </StrictMode>,
-  )
+  void import('./ClientApp').then(({ ClientApp }) => {
+    hydrateRoot(
+      root,
+      <StrictMode>
+        <ClientApp />
+      </StrictMode>,
+    )
+  })
 }

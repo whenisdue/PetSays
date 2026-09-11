@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -15,6 +16,7 @@ import { BubbleGraphic } from './components/BubbleGraphic'
 import { BubbleConnector } from './components/BubbleConnector'
 import { DecorativeSpots } from './components/DecorativeSpots'
 import { PublicHome } from './components/PublicHome'
+import { PublicSiteFooter } from './components/PublicSiteChrome'
 import { getVibe, vibes, type Vibe, type VibeId } from './data/presets'
 import {
   bubbleConnectorSvg,
@@ -46,6 +48,16 @@ type Position = {
   y: number
 }
 
+type BubbleState = {
+  id: string
+  text: string
+  lineIndex: number
+  position: Position
+  scale: number
+  connectorTarget: ConnectorTarget
+  curveDirection: CurveDirection
+}
+
 const initialPosition: Position = { x: 50, y: 26 }
 const defaultConnectorTarget: ConnectorTarget = { x: 0.5, y: 0.72 }
 const minBubbleScale = 0.74
@@ -53,6 +65,19 @@ const maxBubbleScale = 1.28
 const bubbleScaleStep = 0.08
 const jpegExportQuality = 0.92
 const suggestionsPerBatch = 4
+const maxBubbles = 3
+
+function createBubbleState(id: string, text = '', lineIndex = 0): BubbleState {
+  return {
+    id,
+    text,
+    lineIndex,
+    position: initialPosition,
+    scale: 1,
+    connectorTarget: defaultConnectorTarget,
+    curveDirection: 1,
+  }
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
@@ -129,6 +154,13 @@ function wrapText(context: CanvasRenderingContext2D, text: string, maxWidth: num
   return lines
 }
 
+function getBubbleCopyClass(text: string) {
+  const normalizedTextLength = text.trim().length
+  if (normalizedTextLength > 90) return 'bubble-copy-xlong'
+  if (normalizedTextLength > 52) return 'bubble-copy-long'
+  return ''
+}
+
 type AppProps = {
   initialFile?: File | null
   pendingLine?: PendingLine | null
@@ -137,19 +169,19 @@ type AppProps = {
 function App({ initialFile = null, pendingLine = null }: AppProps) {
   const [photo, setPhoto] = useState<LoadedPhoto | null>(null)
   const [vibeId, setVibeId] = useState<VibeId | null>(null)
-  const [lineIndex, setLineIndex] = useState(0)
   const [suggestionBatch, setSuggestionBatch] = useState(0)
-  const [currentText, setCurrentText] = useState('')
   const [customOpen, setCustomOpen] = useState(false)
+  const [isCustomMode, setIsCustomMode] = useState(false)
+  const nextBubbleIdRef = useRef(2)
+  const [bubbles, setBubbles] = useState<BubbleState[]>(() => [createBubbleState('bubble-1')])
+  const [selectedBubbleId, setSelectedBubbleId] = useState('bubble-1')
   const bubbleKind = 'thought' as const
-  const [connectorTarget, setConnectorTarget] = useState<ConnectorTarget>(defaultConnectorTarget)
-  const [curveDirection, setCurveDirection] = useState<CurveDirection>(1)
-  const [bubbleGeometry, setBubbleGeometry] = useState<BubbleBox | null>(null)
-  const [position, setPosition] = useState<Position>(initialPosition)
-  const [bubbleScale, setBubbleScale] = useState(1)
+  const [bubbleGeometries, setBubbleGeometries] = useState<Record<string, BubbleBox>>({})
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 })
   const [isDragging, setIsDragging] = useState(false)
+  const [draggingBubbleId, setDraggingBubbleId] = useState<string | null>(null)
   const [isDraggingTarget, setIsDraggingTarget] = useState(false)
+  const [draggingTargetBubbleId, setDraggingTargetBubbleId] = useState<string | null>(null)
   const [downloaded, setDownloaded] = useState(false)
   const [shareStatus, setShareStatus] = useState<string | null>(null)
   const [detectionResult, setDetectionResult] = useState<PetDetectionResult | null>(null)
@@ -159,33 +191,37 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
   const stageHostRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const stageSizeRef = useRef({ width: 0, height: 0 })
-  const bubbleGroupRef = useRef<HTMLDivElement>(null)
-  const bubbleTextRef = useRef<HTMLSpanElement>(null)
+  const bubbleRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const bubbleTextRefs = useRef<Record<string, HTMLSpanElement | null>>({})
   const textAreaRef = useRef<HTMLTextAreaElement>(null)
   const photoUrlRef = useRef<string | null>(null)
   const dragPointerId = useRef<number | null>(null)
+  const dragBubbleIdRef = useRef<string | null>(null)
   const bubbleGrabOffsetRef = useRef<Position | null>(null)
   const targetPointerId = useRef<number | null>(null)
+  const targetBubbleIdRef = useRef<string | null>(null)
   const targetPointerStartRef = useRef<ConnectorTarget | null>(null)
   const targetPointerMovedRef = useRef(false)
   const targetDragThresholdRef = useRef(8)
-  const curveDirectionInitializedRef = useRef(false)
+  const curveDirectionInitializedRef = useRef<Record<string, boolean>>({})
   const uploadGenerationRef = useRef(0)
   const initialFileHandledRef = useRef<File | null>(null)
   const pendingLineRef = useRef<PendingLine | null>(pendingLine)
   const handleFileRef = useRef<(file: File | undefined) => void>(() => undefined)
-  const smartPlacementAttemptedRef = useRef(false)
-  const manualBubbleOverrideRef = useRef(false)
-  const manualConnectorOverrideRef = useRef(false)
+  const smartPlacementAttemptedRef = useRef<Record<string, boolean>>({})
+  const manualBubbleOverrideRef = useRef<Record<string, boolean>>({})
+  const manualConnectorOverrideRef = useRef<Record<string, boolean>>({})
 
   const selectedVibe = vibeId ? getVibe(vibeId) : null
-  const normalizedTextLength = currentText.trim().length
-  const bubbleCopyClass =
-    normalizedTextLength > 90
-      ? 'bubble-copy-xlong'
-      : normalizedTextLength > 52
-        ? 'bubble-copy-long'
-        : ''
+  const selectedBubble = bubbles.find((bubble) => bubble.id === selectedBubbleId) ?? bubbles[0] ?? null
+  const isEditorMode = Boolean(selectedVibe || isCustomMode)
+  const hasRenderableBubble = isEditorMode && bubbles.some((bubble) => Boolean(bubble.text.trim()))
+  const isPlaceholderBubble = Boolean(
+    isCustomMode && selectedBubble && !selectedBubble.text.trim(),
+  )
+  const hasBubblePreview = isEditorMode && bubbles.some(
+    (bubble) => Boolean(bubble.text.trim()) || (isPlaceholderBubble && bubble.id === selectedBubble?.id),
+  )
 
   const bubbleOuterMaxWidth = useMemo(() => {
     const absoluteMax = 368
@@ -207,35 +243,29 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
         : [],
     [selectedVibe, suggestionBatch],
   )
-  const resolvedConnector = useMemo(() => {
-    if (
-      !selectedVibe ||
-      !currentText ||
-      !bubbleGeometry ||
-      !stageSize.width ||
-      !stageSize.height
-    ) {
-      return null
-    }
+  const resolvedConnectors = useMemo(() => {
+    if (!stageSize.width || !stageSize.height) return {}
 
-    return resolveConnectorGeometry(
-      bubbleKind,
-      bubbleGeometry,
-      connectorTarget,
-      stageSize.width,
-      stageSize.height,
-      curveDirection,
-    )
-  }, [
-    selectedVibe,
-    currentText,
-    bubbleGeometry,
-    stageSize.width,
-    stageSize.height,
-    bubbleKind,
-    connectorTarget,
-    curveDirection,
-  ])
+    return Object.fromEntries(
+      bubbles.flatMap((bubble) => {
+        const geometry = bubbleGeometries[bubble.id]
+        const hasPreview = Boolean(bubble.text.trim()) || (isPlaceholderBubble && bubble.id === selectedBubble?.id)
+        if (!geometry || !hasPreview) return []
+
+        return [[
+          bubble.id,
+          resolveConnectorGeometry(
+            bubbleKind,
+            geometry,
+            bubble.connectorTarget,
+            stageSize.width,
+            stageSize.height,
+            bubble.curveDirection,
+          ),
+        ]]
+      }),
+    ) as Record<string, ReturnType<typeof resolveConnectorGeometry>>
+  }, [bubbles, bubbleGeometries, bubbleKind, isPlaceholderBubble, selectedBubble?.id, stageSize.height, stageSize.width])
 
   const markCompositionDirty = useCallback(() => {
     setDownloaded(false)
@@ -289,33 +319,64 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
   }, [])
 
   useLayoutEffect(() => {
-    if (!photo || !vibeId || !stageRef.current || !bubbleGroupRef.current) {
-      setBubbleGeometry(null)
+    if (!photo || !hasBubblePreview || !stageRef.current) {
+      setBubbleGeometries({})
       return
     }
     const stageRect = stageRef.current.getBoundingClientRect()
-    const bubbleRect = bubbleGroupRef.current.getBoundingClientRect()
-    const bounds = getBubblePositionBounds(stageRect.width, stageRect.height, bubbleRect.width, bubbleRect.height)
-    const nextGeometry = {
-      x: (bubbleRect.left - stageRect.left) / stageRect.width,
-      y: (bubbleRect.top - stageRect.top) / stageRect.height,
-      width: bubbleRect.width / stageRect.width,
-      height: bubbleRect.height / stageRect.height,
-    }
-    const nextTarget = validateConnectorTarget(
-      bubbleKind,
-      connectorTarget,
-      nextGeometry,
-      stageRect.width,
-      stageRect.height,
-    )
-    if (
-      detectionResult &&
-      !smartPlacementAttemptedRef.current &&
-      !manualBubbleOverrideRef.current
-    ) {
-      smartPlacementAttemptedRef.current = true
-      if (detectionResult.status === 'ready' && detectionResult.subjectBox) {
+    const nextGeometries: Record<string, BubbleBox> = {}
+    const nextBubbleValues = new Map<string, Partial<BubbleState>>()
+
+    bubbles.forEach((bubble) => {
+      const bubbleElement = bubbleRefs.current[bubble.id]
+      if (!bubbleElement) return
+
+      const bubbleRect = bubbleElement.getBoundingClientRect()
+      const nextGeometry = {
+        x: (bubbleRect.left - stageRect.left) / stageRect.width,
+        y: (bubbleRect.top - stageRect.top) / stageRect.height,
+        width: bubbleRect.width / stageRect.width,
+        height: bubbleRect.height / stageRect.height,
+      }
+      nextGeometries[bubble.id] = nextGeometry
+
+      const bounds = getBubblePositionBounds(
+        stageRect.width,
+        stageRect.height,
+        bubbleRect.width,
+        bubbleRect.height,
+      )
+      let nextPosition = {
+        x: clamp(bubble.position.x, bounds.minX, bounds.maxX),
+        y: clamp(bubble.position.y, bounds.minY, bounds.maxY),
+      }
+      let nextTarget = validateConnectorTarget(
+        bubbleKind,
+        bubble.connectorTarget,
+        nextGeometry,
+        stageRect.width,
+        stageRect.height,
+      )
+      let nextCurveDirection = bubble.curveDirection
+
+      if (!curveDirectionInitializedRef.current[bubble.id]) {
+        curveDirectionInitializedRef.current[bubble.id] = true
+        nextCurveDirection = getDefaultCurveDirection(
+          bubbleKind,
+          nextGeometry,
+          nextTarget,
+          stageRect.width,
+          stageRect.height,
+        )
+      }
+
+      if (
+        detectionResult?.status === 'ready' &&
+        detectionResult.subjectBox &&
+        !smartPlacementAttemptedRef.current[bubble.id] &&
+        !manualBubbleOverrideRef.current[bubble.id]
+      ) {
+        smartPlacementAttemptedRef.current[bubble.id] = true
         const placement = chooseSmartBubblePlacement({
           subjectBox: detectionResult.subjectBox,
           headBox: detectionResult.headBox,
@@ -324,79 +385,80 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
           stageWidth: stageRect.width,
           stageHeight: stageRect.height,
           bubbleKind,
-          fallbackCenter: { x: initialPosition.x / 100, y: initialPosition.y / 100 },
+          fallbackCenter: {
+            x: bubble.position.x / 100,
+            y: bubble.position.y / 100,
+          },
           bounds,
         })
-        setPlacementResult(placement)
+        if (bubble.id === selectedBubble?.id) setPlacementResult(placement)
         if (placement.succeeded) {
+          nextPosition = { x: placement.center.x * 100, y: placement.center.y * 100 }
           const placedGeometry = {
             x: placement.center.x - nextGeometry.width / 2,
             y: placement.center.y - nextGeometry.height / 2,
             width: nextGeometry.width,
             height: nextGeometry.height,
           }
-          const placedTarget = manualConnectorOverrideRef.current
-            ? nextTarget
-            : validateConnectorTarget(
-                bubbleKind,
-                placement.connectorTarget,
-                placedGeometry,
-                stageRect.width,
-                stageRect.height,
-              )
-          setPosition({ x: placement.center.x * 100, y: placement.center.y * 100 })
-          if (!manualConnectorOverrideRef.current) setConnectorTarget(placedTarget)
-          curveDirectionInitializedRef.current = true
-          setCurveDirection(
-            getDefaultCurveDirection(
+          if (!manualConnectorOverrideRef.current[bubble.id]) {
+            nextTarget = validateConnectorTarget(
               bubbleKind,
+              placement.connectorTarget,
               placedGeometry,
-              placedTarget,
               stageRect.width,
               stageRect.height,
-            ),
+            )
+          }
+          nextCurveDirection = getDefaultCurveDirection(
+            bubbleKind,
+            placedGeometry,
+            nextTarget,
+            stageRect.width,
+            stageRect.height,
           )
-          markCompositionDirty()
         }
       }
-    }
-    if (!curveDirectionInitializedRef.current) {
-      curveDirectionInitializedRef.current = true
-      setCurveDirection(
-        getDefaultCurveDirection(
-          bubbleKind,
-          nextGeometry,
-          nextTarget,
-          stageRect.width,
-          stageRect.height,
-        ),
-      )
-    }
-    setBubbleGeometry((current) => {
+
       if (
-        current &&
-        current.x === nextGeometry.x &&
-        current.y === nextGeometry.y &&
-        current.width === nextGeometry.width &&
-        current.height === nextGeometry.height
-      ) return current
-      return nextGeometry
-    })
-    setPosition((current) => {
-      const next = {
-        x: clamp(current.x, bounds.minX, bounds.maxX),
-        y: clamp(current.y, bounds.minY, bounds.maxY),
+        nextPosition.x !== bubble.position.x ||
+        nextPosition.y !== bubble.position.y ||
+        Math.abs(nextTarget.x - bubble.connectorTarget.x) > 0.00001 ||
+        Math.abs(nextTarget.y - bubble.connectorTarget.y) > 0.00001 ||
+        nextCurveDirection !== bubble.curveDirection
+      ) {
+        nextBubbleValues.set(bubble.id, {
+          position: nextPosition,
+          connectorTarget: nextTarget,
+          curveDirection: nextCurveDirection,
+        })
       }
-      return next.x === current.x && next.y === current.y ? current : next
     })
-    if (
-      Math.abs(nextTarget.x - connectorTarget.x) > 0.00001 ||
-      Math.abs(nextTarget.y - connectorTarget.y) > 0.00001
-    ) {
-      setConnectorTarget(nextTarget)
-      markCompositionDirty()
+
+    setBubbleGeometries((current) => {
+      const currentIds = Object.keys(current)
+      const nextIds = Object.keys(nextGeometries)
+      if (
+        currentIds.length === nextIds.length &&
+        nextIds.every((id) => {
+          const previous = current[id]
+          const next = nextGeometries[id]
+          return previous && previous.x === next.x && previous.y === next.y && previous.width === next.width && previous.height === next.height
+        })
+      ) return current
+      return nextGeometries
+    })
+
+    if (nextBubbleValues.size > 0) {
+      const frame = window.requestAnimationFrame(() => {
+        setBubbles((current) => current.map((bubble) => ({
+          ...bubble,
+          ...(nextBubbleValues.get(bubble.id) ?? {}),
+        })))
+        markCompositionDirty()
+      })
+      return () => window.cancelAnimationFrame(frame)
     }
-  }, [photo, vibeId, currentText, bubbleKind, connectorTarget, position.x, position.y, bubbleScale, stageSize.width, stageSize.height, detectionResult, markCompositionDirty])
+  }, [bubbles, detectionResult, hasBubblePreview, bubbleKind, markCompositionDirty, photo, selectedBubble?.id, stageSize.height, stageSize.width])
 
   const handleHome = (event: ReactMouseEvent<HTMLAnchorElement>) => {
     event.preventDefault()
@@ -410,10 +472,14 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
     stageSizeRef.current = { width: 0, height: 0 }
     setStageSize({ width: 0, height: 0 })
     setIsDragging(false)
+    setDraggingBubbleId(null)
     setIsDraggingTarget(false)
+    setDraggingTargetBubbleId(null)
     dragPointerId.current = null
+    dragBubbleIdRef.current = null
     bubbleGrabOffsetRef.current = null
     targetPointerId.current = null
+    targetBubbleIdRef.current = null
     targetPointerStartRef.current = null
     targetPointerMovedRef.current = false
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
@@ -421,22 +487,23 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
 
   const resetForNewPhoto = () => {
     setVibeId(null)
-    setLineIndex(0)
     setSuggestionBatch(0)
-    setCurrentText('')
     setCustomOpen(false)
-    setConnectorTarget(defaultConnectorTarget)
-    setCurveDirection(1)
-    curveDirectionInitializedRef.current = false
-    setBubbleGeometry(null)
-    setPosition(initialPosition)
-    setBubbleScale(1)
+    setIsCustomMode(false)
+    nextBubbleIdRef.current = 2
+    setBubbles([createBubbleState('bubble-1')])
+    setSelectedBubbleId('bubble-1')
+    setBubbleGeometries({})
+    bubbleRefs.current = {}
+    bubbleTextRefs.current = {}
+    curveDirectionInitializedRef.current = {}
+    smartPlacementAttemptedRef.current = {}
+    manualBubbleOverrideRef.current = {}
+    manualConnectorOverrideRef.current = {}
+    dragBubbleIdRef.current = null
     markCompositionDirty()
     setDetectionResult(null)
     setPlacementResult(null)
-    smartPlacementAttemptedRef.current = false
-    manualBubbleOverrideRef.current = false
-    manualConnectorOverrideRef.current = false
   }
 
   const handleFile = (file: File | undefined) => {
@@ -468,9 +535,9 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
         if (pendingVibe.id === pendingLineForPhoto.vibeId) {
           const pendingLineIndex = pendingVibe.lines.indexOf(pendingLineForPhoto.text)
           setVibeId(pendingVibe.id)
-          setLineIndex(pendingLineIndex >= 0 ? pendingLineIndex : 0)
           setSuggestionBatch(0)
-          setCurrentText(pendingLineForPhoto.text)
+          setBubbles([createBubbleState('bubble-1', pendingLineForPhoto.text, pendingLineIndex >= 0 ? pendingLineIndex : 0)])
+          setSelectedBubbleId('bubble-1')
           setCustomOpen(false)
         }
       }
@@ -495,6 +562,12 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
     event.target.value = ''
   }
 
+  const updateBubble = useCallback((bubbleId: string, changes: Partial<BubbleState>) => {
+    setBubbles((current) => current.map((bubble) => (
+      bubble.id === bubbleId ? { ...bubble, ...changes } : bubble
+    )))
+  }, [])
+
   useEffect(() => {
     if (!initialFile || initialFileHandledRef.current === initialFile) return
     initialFileHandledRef.current = initialFile
@@ -502,29 +575,65 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
   }, [initialFile])
 
   const handleVibe = (vibe: Vibe) => {
+    if (!selectedBubble) return
+    setIsCustomMode(false)
     setVibeId(vibe.id)
-    setLineIndex(0)
     setSuggestionBatch(0)
-    setCurrentText(vibe.lines[0])
     setCustomOpen(false)
-    if (!manualConnectorOverrideRef.current) setConnectorTarget(defaultConnectorTarget)
-    if (!manualBubbleOverrideRef.current) setPosition(initialPosition)
-    if (!manualBubbleOverrideRef.current) {
-      smartPlacementAttemptedRef.current = false
+    updateBubble(selectedBubble.id, {
+      text: vibe.lines[0],
+      lineIndex: 0,
+      ...(!manualConnectorOverrideRef.current[selectedBubble.id]
+        ? { connectorTarget: defaultConnectorTarget, curveDirection: 1 }
+        : {}),
+      ...(!manualBubbleOverrideRef.current[selectedBubble.id]
+        ? { position: initialPosition }
+        : {}),
+    })
+    if (!manualBubbleOverrideRef.current[selectedBubble.id]) {
+      smartPlacementAttemptedRef.current[selectedBubble.id] = false
       setPlacementResult(null)
     }
-    if (!manualConnectorOverrideRef.current) {
-      setCurveDirection(1)
-      curveDirectionInitializedRef.current = false
+    if (!manualConnectorOverrideRef.current[selectedBubble.id]) {
+      curveDirectionInitializedRef.current[selectedBubble.id] = false
     }
-    setBubbleGeometry(null)
     markCompositionDirty()
   }
 
+  const startCustomMode = () => {
+    if (!selectedBubble) return
+    setIsCustomMode(true)
+    setVibeId(null)
+    setSuggestionBatch(0)
+    setCustomOpen(true)
+    updateBubble(selectedBubble.id, {
+      text: '',
+      lineIndex: 0,
+      position: initialPosition,
+      scale: 1,
+      connectorTarget: defaultConnectorTarget,
+      curveDirection: 1,
+    })
+    curveDirectionInitializedRef.current[selectedBubble.id] = false
+    setPlacementResult(null)
+    smartPlacementAttemptedRef.current[selectedBubble.id] = false
+    manualBubbleOverrideRef.current[selectedBubble.id] = false
+    manualConnectorOverrideRef.current[selectedBubble.id] = false
+    markCompositionDirty()
+  }
+
+  const handleChangeVibe = () => {
+    setVibeId(null)
+    setIsCustomMode(false)
+    setCustomOpen(false)
+  }
+
   const chooseLine = (index: number) => {
-    if (!selectedVibe) return
-    setLineIndex(index)
-    setCurrentText(selectedVibe.lines[index])
+    if (!selectedVibe || !selectedBubble) return
+    updateBubble(selectedBubble.id, {
+      lineIndex: index,
+      text: selectedVibe.lines[index],
+    })
     setCustomOpen(false)
     markCompositionDirty()
   }
@@ -545,16 +654,103 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
       nextIndices[Math.floor(Math.random() * nextIndices.length)] ?? 0
 
     setSuggestionBatch(nextBatch)
-    setLineIndex(nextIndex)
-    setCurrentText(selectedVibe.lines[nextIndex])
+    if (selectedBubble) {
+      updateBubble(selectedBubble.id, {
+        lineIndex: nextIndex,
+        text: selectedVibe.lines[nextIndex],
+      })
+    }
     setCustomOpen(false)
     markCompositionDirty()
   }
 
-  const updateBubblePosition = useCallback((centerX: number, centerY: number) => {
+  const handleSelectBubble = (bubbleId: string) => {
+    const bubble = bubbles.find((item) => item.id === bubbleId)
+    if (!bubble) return
+    setSelectedBubbleId(bubbleId)
+    if (isCustomMode && !bubble.text.trim()) setCustomOpen(true)
+  }
+
+  const handleAddBubble = () => {
+    if (bubbles.length >= maxBubbles) return
+
+    const candidates: Position[] = [
+      { x: 22, y: 24 },
+      { x: 78, y: 24 },
+      { x: 22, y: 62 },
+      { x: 78, y: 62 },
+      { x: 50, y: 76 },
+      { x: 50, y: 20 },
+    ]
+    const subject = detectionResult?.subjectBox
+    const subjectCenter = subject
+      ? { x: (subject.x + subject.width / 2) * 100, y: (subject.y + subject.height / 2) * 100 }
+      : null
+    const nextPosition = candidates
+      .map((candidate) => {
+        const nearestBubbleDistance = Math.min(
+          ...bubbles.map((bubble) => Math.hypot(candidate.x - bubble.position.x, candidate.y - bubble.position.y)),
+        )
+        const subjectDistance = subjectCenter
+          ? Math.hypot(candidate.x - subjectCenter.x, candidate.y - subjectCenter.y)
+          : 0
+        return {
+          candidate,
+          score: nearestBubbleDistance + subjectDistance * 0.28,
+        }
+      })
+      .sort((first, second) => second.score - first.score)[0]?.candidate ?? initialPosition
+    const bubbleId = `bubble-${nextBubbleIdRef.current++}`
+    const nextLineIndex = selectedVibe
+      ? (selectedBubble?.lineIndex ?? 0) + 1 < selectedVibe.lines.length
+        ? (selectedBubble?.lineIndex ?? 0) + 1
+        : 0
+      : 0
+    const nextText = selectedVibe?.lines[nextLineIndex] ?? ''
+    const nextBubble = {
+      ...createBubbleState(bubbleId, nextText, nextLineIndex),
+      position: nextPosition,
+      connectorTarget: subjectCenter
+        ? { x: subjectCenter.x / 100, y: subjectCenter.y / 100 }
+        : defaultConnectorTarget,
+    }
+
+    setBubbles((current) => [...current, nextBubble])
+    setSelectedBubbleId(bubbleId)
+    setCustomOpen(!nextText)
+    curveDirectionInitializedRef.current[bubbleId] = true
+    smartPlacementAttemptedRef.current[bubbleId] = true
+    manualBubbleOverrideRef.current[bubbleId] = false
+    manualConnectorOverrideRef.current[bubbleId] = false
+    markCompositionDirty()
+  }
+
+  const handleRemoveBubble = () => {
+    if (bubbles.length <= 1 || !selectedBubble) return
+    const selectedIndex = bubbles.findIndex((bubble) => bubble.id === selectedBubble.id)
+    const remaining = bubbles.filter((bubble) => bubble.id !== selectedBubble.id)
+    const nextSelected = remaining[Math.max(0, selectedIndex - 1)] ?? remaining[0]
+    setBubbles(remaining)
+    setSelectedBubbleId(nextSelected.id)
+    setCustomOpen(isCustomMode && !nextSelected.text.trim())
+    setBubbleGeometries((current) => {
+      const next = { ...current }
+      delete next[selectedBubble.id]
+      return next
+    })
+    delete bubbleRefs.current[selectedBubble.id]
+    delete bubbleTextRefs.current[selectedBubble.id]
+    delete curveDirectionInitializedRef.current[selectedBubble.id]
+    delete smartPlacementAttemptedRef.current[selectedBubble.id]
+    delete manualBubbleOverrideRef.current[selectedBubble.id]
+    delete manualConnectorOverrideRef.current[selectedBubble.id]
+    markCompositionDirty()
+  }
+
+  const updateBubblePosition = useCallback((bubbleId: string, centerX: number, centerY: number) => {
     if (!stageRef.current) return
     const rect = stageRef.current.getBoundingClientRect()
-    const bubbleRect = bubbleGroupRef.current?.getBoundingClientRect()
+    const bubbleRect = bubbleRefs.current[bubbleId]?.getBoundingClientRect()
     const bounds = getBubblePositionBounds(rect.width, rect.height, bubbleRect?.width, bubbleRect?.height)
     const nextX = clamp(
       ((centerX - rect.left) / rect.width) * 100,
@@ -566,74 +762,89 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
       bounds.minY,
       bounds.maxY,
     )
-    setPosition({ x: nextX, y: nextY })
+    manualBubbleOverrideRef.current[bubbleId] = true
+    updateBubble(bubbleId, { position: { x: nextX, y: nextY } })
     markCompositionDirty()
-  }, [markCompositionDirty])
+  }, [markCompositionDirty, updateBubble])
 
-  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!stageRef.current || !bubbleGroupRef.current) return
+  const handlePointerDown = (bubbleId: string, event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!stageRef.current || !bubbleRefs.current[bubbleId]) return
+    setSelectedBubbleId(bubbleId)
     event.preventDefault()
-    const bubbleRect = bubbleGroupRef.current.getBoundingClientRect()
+    const bubbleRect = bubbleRefs.current[bubbleId].getBoundingClientRect()
     bubbleGrabOffsetRef.current = {
       x: event.clientX - (bubbleRect.left + bubbleRect.width / 2),
       y: event.clientY - (bubbleRect.top + bubbleRect.height / 2),
     }
     dragPointerId.current = event.pointerId
+    dragBubbleIdRef.current = bubbleId
+    setDraggingBubbleId(bubbleId)
     event.currentTarget.setPointerCapture(event.pointerId)
     setIsDragging(true)
   }
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (dragPointerId.current !== event.pointerId) return
-    manualBubbleOverrideRef.current = true
+    if (dragPointerId.current !== event.pointerId || !dragBubbleIdRef.current) return
     const offset = bubbleGrabOffsetRef.current ?? { x: 0, y: 0 }
-    updateBubblePosition(event.clientX - offset.x, event.clientY - offset.y)
+    updateBubblePosition(
+      dragBubbleIdRef.current,
+      event.clientX - offset.x,
+      event.clientY - offset.y,
+    )
   }
 
   const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (dragPointerId.current !== event.pointerId) return
     dragPointerId.current = null
+    dragBubbleIdRef.current = null
     bubbleGrabOffsetRef.current = null
     setIsDragging(false)
+    setDraggingBubbleId(null)
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
   }
 
-  const handleBubbleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+  const handleBubbleKeyDown = (bubbleId: string, event: KeyboardEvent<HTMLDivElement>) => {
+    const bubble = bubbles.find((item) => item.id === bubbleId)
+    if (!bubble || !stageRef.current) return
     const step = event.shiftKey ? 5 : 2
     let nextPosition: Position | null = null
-    if (event.key === 'ArrowLeft') nextPosition = { x: position.x - step, y: position.y }
-    if (event.key === 'ArrowRight') nextPosition = { x: position.x + step, y: position.y }
-    if (event.key === 'ArrowUp') nextPosition = { x: position.x, y: position.y - step }
-    if (event.key === 'ArrowDown') nextPosition = { x: position.x, y: position.y + step }
+    if (event.key === 'ArrowLeft') nextPosition = { x: bubble.position.x - step, y: bubble.position.y }
+    if (event.key === 'ArrowRight') nextPosition = { x: bubble.position.x + step, y: bubble.position.y }
+    if (event.key === 'ArrowUp') nextPosition = { x: bubble.position.x, y: bubble.position.y - step }
+    if (event.key === 'ArrowDown') nextPosition = { x: bubble.position.x, y: bubble.position.y + step }
     if (!nextPosition) return
     event.preventDefault()
-    manualBubbleOverrideRef.current = true
     const rect = stageRef.current?.getBoundingClientRect()
-    const bubbleRect = bubbleGroupRef.current?.getBoundingClientRect()
+    const bubbleRect = bubbleRefs.current[bubbleId]?.getBoundingClientRect()
     const bounds = rect
       ? getBubblePositionBounds(rect.width, rect.height, bubbleRect?.width, bubbleRect?.height)
       : { minX: 16, maxX: 84, minY: 16, maxY: 82 }
     const nextX = clamp(nextPosition.x, bounds.minX, bounds.maxX)
-    setPosition({ x: nextX, y: clamp(nextPosition.y, bounds.minY, bounds.maxY) })
-    markCompositionDirty()
-  }
-
-  const adjustBubbleScale = (delta: number) => {
-    manualBubbleOverrideRef.current = true
-    setBubbleScale((current) => {
-      const next = clamp(current + delta, minBubbleScale, maxBubbleScale)
-      return Math.round(next * 100) / 100
+    manualBubbleOverrideRef.current[bubbleId] = true
+    updateBubble(bubbleId, {
+      position: { x: nextX, y: clamp(nextPosition.y, bounds.minY, bounds.maxY) },
     })
     markCompositionDirty()
   }
 
-  const updateConnectorTarget = useCallback((clientX: number, clientY: number) => {
+  const adjustBubbleScale = (bubbleId: string, delta: number) => {
+    const bubble = bubbles.find((item) => item.id === bubbleId)
+    if (!bubble) return
+    manualBubbleOverrideRef.current[bubbleId] = true
+    const next = clamp(bubble.scale + delta, minBubbleScale, maxBubbleScale)
+    updateBubble(bubbleId, { scale: Math.round(next * 100) / 100 })
+    markCompositionDirty()
+  }
+
+  const updateConnectorTarget = useCallback((bubbleId: string, clientX: number, clientY: number) => {
     if (!stageRef.current) return
-    manualConnectorOverrideRef.current = true
+    const bubbleState = bubbles.find((item) => item.id === bubbleId)
+    if (!bubbleState) return
+    manualConnectorOverrideRef.current[bubbleId] = true
     const rect = stageRef.current.getBoundingClientRect()
-    const bubbleRect = bubbleGroupRef.current?.getBoundingClientRect()
+    const bubbleRect = bubbleRefs.current[bubbleId]?.getBoundingClientRect()
     const bubble = bubbleRect
       ? {
           x: (bubbleRect.left - rect.left) / rect.width,
@@ -642,7 +853,7 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
           height: bubbleRect.height / rect.height,
         }
       : null
-    setConnectorTarget(
+    const nextTarget =
       validateConnectorTarget(
         bubbleKind,
         {
@@ -652,16 +863,19 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
         bubble,
         rect.width,
         rect.height,
-      ),
-    )
+      )
+    updateBubble(bubbleId, { connectorTarget: nextTarget })
     markCompositionDirty()
-  }, [bubbleKind, markCompositionDirty])
+  }, [bubbleKind, bubbles, markCompositionDirty, updateBubble])
 
-  const handleConnectorPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const handleConnectorPointerDown = (bubbleId: string, event: ReactPointerEvent<HTMLButtonElement>) => {
     if (!stageRef.current) return
+    setSelectedBubbleId(bubbleId)
     event.preventDefault()
     event.stopPropagation()
     targetPointerId.current = event.pointerId
+    targetBubbleIdRef.current = bubbleId
+    setDraggingTargetBubbleId(bubbleId)
     targetPointerStartRef.current = { x: event.clientX, y: event.clientY }
     targetPointerMovedRef.current = false
     targetDragThresholdRef.current =
@@ -682,22 +896,29 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
       targetPointerMovedRef.current = true
     }
     if (!targetPointerMovedRef.current) return
-    updateConnectorTarget(event.clientX, event.clientY)
+    if (targetBubbleIdRef.current) {
+      updateConnectorTarget(targetBubbleIdRef.current, event.clientX, event.clientY)
+    }
   }
 
   const finishConnectorPointer = (event: ReactPointerEvent<HTMLButtonElement>, allowTap: boolean) => {
     if (targetPointerId.current !== event.pointerId) return
     const wasTap = allowTap && !targetPointerMovedRef.current
+    const bubbleId = targetBubbleIdRef.current
     targetPointerId.current = null
+    targetBubbleIdRef.current = null
     targetPointerStartRef.current = null
     targetPointerMovedRef.current = false
     setIsDraggingTarget(false)
+    setDraggingTargetBubbleId(null)
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
-    if (wasTap) {
-      curveDirectionInitializedRef.current = true
-      setCurveDirection((current) => current === 1 ? -1 : 1)
+    if (wasTap && bubbleId) {
+      const bubble = bubbles.find((item) => item.id === bubbleId)
+      if (!bubble) return
+      curveDirectionInitializedRef.current[bubbleId] = true
+      updateBubble(bubbleId, { curveDirection: bubble.curveDirection === 1 ? -1 : 1 })
       markCompositionDirty()
     }
   }
@@ -710,28 +931,30 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
     finishConnectorPointer(event, false)
   }
 
-  const handleConnectorKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+  const handleConnectorKeyDown = (bubbleId: string, event: KeyboardEvent<HTMLButtonElement>) => {
+    const bubble = bubbles.find((item) => item.id === bubbleId)
+    if (!bubble) return
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      curveDirectionInitializedRef.current = true
-      setCurveDirection((current) => current === 1 ? -1 : 1)
+      curveDirectionInitializedRef.current[bubbleId] = true
+      updateBubble(bubbleId, { curveDirection: bubble.curveDirection === 1 ? -1 : 1 })
       markCompositionDirty()
       return
     }
     const step = event.shiftKey ? 0.05 : 0.025
     let nextTarget: ConnectorTarget | null = null
-    if (event.key === 'ArrowLeft') nextTarget = { x: connectorTarget.x - step, y: connectorTarget.y }
-    if (event.key === 'ArrowRight') nextTarget = { x: connectorTarget.x + step, y: connectorTarget.y }
-    if (event.key === 'ArrowUp') nextTarget = { x: connectorTarget.x, y: connectorTarget.y - step }
-    if (event.key === 'ArrowDown') nextTarget = { x: connectorTarget.x, y: connectorTarget.y + step }
+    if (event.key === 'ArrowLeft') nextTarget = { x: bubble.connectorTarget.x - step, y: bubble.connectorTarget.y }
+    if (event.key === 'ArrowRight') nextTarget = { x: bubble.connectorTarget.x + step, y: bubble.connectorTarget.y }
+    if (event.key === 'ArrowUp') nextTarget = { x: bubble.connectorTarget.x, y: bubble.connectorTarget.y - step }
+    if (event.key === 'ArrowDown') nextTarget = { x: bubble.connectorTarget.x, y: bubble.connectorTarget.y + step }
     if (!nextTarget) return
     event.preventDefault()
-    manualConnectorOverrideRef.current = true
+    manualConnectorOverrideRef.current[bubbleId] = true
     const rect = stageRef.current?.getBoundingClientRect()
-    const bubbleRect = stageRef.current && bubbleGroupRef.current
-      ? bubbleGroupRef.current.getBoundingClientRect()
+    const bubbleRect = stageRef.current && bubbleRefs.current[bubbleId]
+      ? bubbleRefs.current[bubbleId].getBoundingClientRect()
       : null
-    const bubble = rect && bubbleRect
+    const bubbleBox = rect && bubbleRect
       ? {
           x: (bubbleRect.left - rect.left) / rect.width,
           y: (bubbleRect.top - rect.top) / rect.height,
@@ -739,17 +962,17 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
           height: bubbleRect.height / rect.height,
         }
       : null
-    setConnectorTarget(
-      rect
+    updateBubble(bubbleId, {
+      connectorTarget: rect
         ? validateConnectorTarget(
             bubbleKind,
             nextTarget,
-            bubble,
+            bubbleBox,
             rect.width,
             rect.height,
           )
         : nextTarget,
-    )
+    })
     markCompositionDirty()
   }
 
@@ -815,13 +1038,8 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
   }
 
   const createPetSaysImageBlob = async (): Promise<Blob | null> => {
-    if (
-      !photo ||
-      !stageRef.current ||
-      !bubbleGroupRef.current ||
-      !bubbleTextRef.current ||
-      !resolvedConnector
-    ) return null
+    const exportableBubbles = bubbles.filter((bubble) => Boolean(bubble.text.trim()))
+    if (!photo || !hasRenderableBubble || !stageRef.current || exportableBubbles.length === 0) return null
 
     const image = new window.Image()
     image.src = photo.src
@@ -832,8 +1050,6 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
     await logoImage.decode()
 
     const stageRect = stageRef.current.getBoundingClientRect()
-    const bubbleRect = bubbleGroupRef.current.getBoundingClientRect()
-    const textRect = bubbleTextRef.current.getBoundingClientRect()
     const scale = photo.naturalWidth / stageRect.width
     const canvas = document.createElement('canvas')
     canvas.width = photo.naturalWidth
@@ -843,49 +1059,60 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
 
     context.drawImage(image, 0, 0, canvas.width, canvas.height)
 
-    const computed = window.getComputedStyle(bubbleTextRef.current)
-    const fontSize = Number.parseFloat(computed.fontSize) * bubbleScale * scale
-    const padding = Number.parseFloat(computed.paddingLeft) * bubbleScale * scale
-    const lineHeightValue = Number.parseFloat(computed.lineHeight)
-    const lineHeight = (Number.isFinite(lineHeightValue) ? lineHeightValue * bubbleScale : fontSize * 1.22) * scale
+    for (const bubble of exportableBubbles) {
+      const bubbleGeometry = bubbleGeometries[bubble.id]
+      const resolvedConnector = resolvedConnectors[bubble.id]
+      if (!bubbleGeometry || !resolvedConnector) return null
+      const connectorSvg = bubbleConnectorSvg(
+        resolvedConnector,
+        canvas.width,
+        canvas.height,
+      )
+      const connectorUrl = URL.createObjectURL(new Blob([connectorSvg], { type: 'image/svg+xml' }))
+      const connectorImage = new window.Image()
+      connectorImage.src = connectorUrl
+      await connectorImage.decode()
+      context.drawImage(connectorImage, 0, 0, canvas.width, canvas.height)
+      URL.revokeObjectURL(connectorUrl)
+    }
 
-    const bubbleX = (bubbleRect.left - stageRect.left) * scale
-    const bubbleY = (bubbleRect.top - stageRect.top) * scale
-    const bubbleWidth = bubbleRect.width * scale
-    const bubbleHeight = bubbleRect.height * scale
-    const connectorSvg = bubbleConnectorSvg(
-      resolvedConnector,
-      canvas.width,
-      canvas.height,
-    )
-    const connectorUrl = URL.createObjectURL(new Blob([connectorSvg], { type: 'image/svg+xml' }))
-    const connectorImage = new window.Image()
-    connectorImage.src = connectorUrl
-    await connectorImage.decode()
-    context.drawImage(connectorImage, 0, 0, canvas.width, canvas.height)
-    URL.revokeObjectURL(connectorUrl)
+    for (const bubble of exportableBubbles) {
+      const bubbleElement = bubbleRefs.current[bubble.id]
+      const bubbleTextElement = bubbleTextRefs.current[bubble.id]
+      if (!bubbleElement || !bubbleTextElement) return null
+      const bubbleRect = bubbleElement.getBoundingClientRect()
+      const textRect = bubbleTextElement.getBoundingClientRect()
+      const computed = window.getComputedStyle(bubbleTextElement)
+      const fontSize = Number.parseFloat(computed.fontSize) * bubble.scale * scale
+      const padding = Number.parseFloat(computed.paddingLeft) * bubble.scale * scale
+      const lineHeightValue = Number.parseFloat(computed.lineHeight)
+      const lineHeight = (Number.isFinite(lineHeightValue) ? lineHeightValue * bubble.scale : fontSize * 1.22) * scale
+      const bubbleX = (bubbleRect.left - stageRect.left) * scale
+      const bubbleY = (bubbleRect.top - stageRect.top) * scale
+      const bubbleWidth = bubbleRect.width * scale
+      const bubbleHeight = bubbleRect.height * scale
+      const shellSvg = bubbleBodySvg(bubbleKind, bubbleWidth, bubbleHeight)
+      const shellUrl = URL.createObjectURL(new Blob([shellSvg], { type: 'image/svg+xml' }))
+      const shellImage = new window.Image()
+      shellImage.src = shellUrl
+      await shellImage.decode()
+      context.drawImage(shellImage, bubbleX, bubbleY, bubbleWidth, bubbleHeight)
+      URL.revokeObjectURL(shellUrl)
 
-    const shellSvg = bubbleBodySvg(bubbleKind, bubbleWidth, bubbleHeight)
-    const shellUrl = URL.createObjectURL(new Blob([shellSvg], { type: 'image/svg+xml' }))
-    const shellImage = new window.Image()
-    shellImage.src = shellUrl
-    await shellImage.decode()
-    context.drawImage(shellImage, bubbleX, bubbleY, bubbleWidth, bubbleHeight)
-    URL.revokeObjectURL(shellUrl)
-
-    context.save()
-    context.fillStyle = computed.color
-    context.font = `${computed.fontWeight} ${fontSize}px ${computed.fontFamily}`
-    context.textAlign = 'center'
-    context.textBaseline = 'middle'
-    const textX = (textRect.left - stageRect.left) * scale + textRect.width * scale / 2
-    const textY = (textRect.top - stageRect.top) * scale + textRect.height * scale / 2
-    const textWidth = Math.max(1, textRect.width * scale - padding * 2)
-    const lines = wrapText(context, currentText, textWidth)
-    const totalHeight = lines.length * lineHeight
-    const firstY = textY - totalHeight / 2 + lineHeight / 2
-    lines.forEach((line, index) => context.fillText(line, textX, firstY + index * lineHeight))
-    context.restore()
+      context.save()
+      context.fillStyle = computed.color
+      context.font = `${computed.fontWeight} ${fontSize}px ${computed.fontFamily}`
+      context.textAlign = 'center'
+      context.textBaseline = 'middle'
+      const textX = (textRect.left - stageRect.left) * scale + textRect.width * scale / 2
+      const textY = (textRect.top - stageRect.top) * scale + textRect.height * scale / 2
+      const textWidth = Math.max(1, textRect.width * scale - padding * 2)
+      const lines = wrapText(context, bubble.text, textWidth)
+      const totalHeight = lines.length * lineHeight
+      const firstY = textY - totalHeight / 2 + lineHeight / 2
+      lines.forEach((line, index) => context.fillText(line, textX, firstY + index * lineHeight))
+      context.restore()
+    }
 
     drawPetSaysBrandMark(context, canvas.width, canvas.height, logoImage)
 
@@ -982,13 +1209,13 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
       </header>
 
       <main id="top">
-        <section className={`maker-section ${selectedVibe ? 'has-result' : 'is-vibe-picker'}`} aria-labelledby="maker-title">
-            <DecorativeSpots page={selectedVibe ? 'result' : 'picker'} />
+        <section className={`maker-section ${isEditorMode ? 'has-result' : 'is-vibe-picker'}`} aria-labelledby="maker-title">
+            <DecorativeSpots page={isEditorMode ? 'result' : 'picker'} />
             <div className="maker-topline">
               <div>
-                {!selectedVibe && <p className="eyebrow">Photo received</p>}
-                <h1 id="maker-title" className={selectedVibe ? 'result-page-title' : 'vibe-picker-title'}>
-                  {selectedVibe ? 'Your pet has opinions.' : 'Pick a vibe.'}
+                {!isEditorMode && <p className="eyebrow">Photo received</p>}
+                <h1 id="maker-title" className={isEditorMode ? 'result-page-title' : 'vibe-picker-title'}>
+                  {isEditorMode ? 'Your pet has opinions.' : 'Pick a vibe.'}
                 </h1>
               </div>
             </div>
@@ -1003,7 +1230,7 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
               aria-label="Choose a different pet photo"
             />
 
-            <div className={`maker-layout ${selectedVibe ? 'has-result' : ''}`}>
+            <div className={`maker-layout ${isEditorMode ? 'has-result' : ''}`}>
               <div className={`photo-column ${photo.naturalWidth / photo.naturalHeight > 1.15 ? 'photo-column-wide' : ''}`}>
                 <div className="photo-column-toolbar">
                   <label className="change-photo-button" htmlFor="photo-upload">
@@ -1036,73 +1263,91 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
                     }}
                   >
                     <img className="uploaded-photo" src={photo.src} alt={`Uploaded pet photo: ${photo.name}`} />
-                    {selectedVibe && currentText && bubbleGeometry && resolvedConnector && (
-                      <BubbleConnector
-                        kind={bubbleKind}
-                        bubble={bubbleGeometry}
-                        target={connectorTarget}
-                        curveDirection={curveDirection}
-                        width={stageSize.width}
-                        height={stageSize.height}
-                        geometry={resolvedConnector}
-                      />
-                    )}
-                    {selectedVibe && currentText && (
-                      <div
-                        ref={bubbleGroupRef}
-                        className={`bubble-group ${isDragging ? 'is-dragging' : ''}`}
-                        style={{
-                          left: `${position.x}%`,
-                          top: `${position.y}%`,
-                          '--bubble-scale': bubbleScale,
-                          '--bubble-outer-max-width': `${bubbleOuterMaxWidth}px`,
-                          '--bubble-text-max-width': `${bubbleTextMaxWidth}px`,
-                        } as CSSProperties}
-                        data-bubble-scale={bubbleScale.toFixed(2)}
-                        onPointerDown={handlePointerDown}
-                        onPointerMove={handlePointerMove}
-                        onPointerUp={handlePointerUp}
-                        onPointerCancel={handlePointerUp}
-                        onKeyDown={handleBubbleKeyDown}
-                        role="group"
-                        tabIndex={0}
-                        aria-label="Thought bubble. Use arrow keys to move it around the photo."
-                        title="Drag me"
-                      >
-                        <BubbleGraphic
-                          kind={bubbleKind}
-                          text={currentText}
-                          className={bubbleCopyClass}
-                          textRef={bubbleTextRef}
-                        />
-                      </div>
-                    )}
-                    {selectedVibe && currentText && (
-                      <button
-                        type="button"
-                        className={`connector-handle ${isDraggingTarget ? 'is-dragging' : ''}`}
-                        style={{ left: `${connectorTarget.x * 100}%`, top: `${connectorTarget.y * 100}%` }}
-                        onPointerDown={handleConnectorPointerDown}
-                        onPointerMove={handleConnectorPointerMove}
-                        onPointerUp={handleConnectorPointerUp}
-                        onPointerCancel={handleConnectorPointerCancel}
-                        onKeyDown={handleConnectorKeyDown}
-                        aria-label="Drag connector tip to point at your pet, or tap to flip the curve"
-                        title="Drag to point; tap to flip curve"
-                      >
-                        <span aria-hidden="true" />
-                      </button>
-                    )}
+                    {bubbles.map((bubble, index) => {
+                      const hasRealText = Boolean(bubble.text.trim())
+                      const isSelected = bubble.id === selectedBubble?.id
+                      const showPlaceholder = isSelected && isCustomMode && !hasRealText
+                      const displayText = hasRealText ? bubble.text : showPlaceholder ? 'Type something…' : ''
+                      if (!isEditorMode || !displayText) return null
+                      const geometry = bubbleGeometries[bubble.id]
+                      const connector = resolvedConnectors[bubble.id]
+
+                      return (
+                        <Fragment key={bubble.id}>
+                          {geometry && connector && (
+                            <BubbleConnector
+                              kind={bubbleKind}
+                              bubble={geometry}
+                              target={bubble.connectorTarget}
+                              curveDirection={bubble.curveDirection}
+                              width={stageSize.width}
+                              height={stageSize.height}
+                              geometry={connector}
+                            />
+                          )}
+                          <div
+                            ref={(element) => {
+                              if (element) bubbleRefs.current[bubble.id] = element
+                              else delete bubbleRefs.current[bubble.id]
+                            }}
+                            className={`bubble-group ${isSelected ? 'is-selected' : ''} ${isDragging && draggingBubbleId === bubble.id ? 'is-dragging' : ''}`}
+                            style={{
+                              left: `${bubble.position.x}%`,
+                              top: `${bubble.position.y}%`,
+                              '--bubble-scale': bubble.scale,
+                              '--bubble-outer-max-width': `${bubbleOuterMaxWidth}px`,
+                              '--bubble-text-max-width': `${bubbleTextMaxWidth}px`,
+                            } as CSSProperties}
+                            data-bubble-id={bubble.id}
+                            data-bubble-scale={bubble.scale.toFixed(2)}
+                            onPointerDown={(event) => handlePointerDown(bubble.id, event)}
+                            onPointerMove={handlePointerMove}
+                            onPointerUp={handlePointerUp}
+                            onPointerCancel={handlePointerUp}
+                            onClick={() => handleSelectBubble(bubble.id)}
+                            onKeyDown={(event) => handleBubbleKeyDown(bubble.id, event)}
+                            role="group"
+                            tabIndex={0}
+                            aria-label={`Thought bubble ${index + 1}${isSelected ? ', selected' : ''}. Use arrow keys to move it around the photo.`}
+                            title="Tap to edit this bubble"
+                          >
+                            <BubbleGraphic
+                              kind={bubbleKind}
+                              text={displayText}
+                              className={`${getBubbleCopyClass(bubble.text)}${showPlaceholder ? ' bubble-placeholder' : ''}`}
+                              textRef={(element) => {
+                                if (element) bubbleTextRefs.current[bubble.id] = element
+                                else delete bubbleTextRefs.current[bubble.id]
+                              }}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className={`connector-handle ${isSelected ? 'is-selected' : ''} ${isDraggingTarget && draggingTargetBubbleId === bubble.id ? 'is-dragging' : ''}`}
+                            style={{ left: `${bubble.connectorTarget.x * 100}%`, top: `${bubble.connectorTarget.y * 100}%` }}
+                            onPointerDown={(event) => handleConnectorPointerDown(bubble.id, event)}
+                            onPointerMove={handleConnectorPointerMove}
+                            onPointerUp={handleConnectorPointerUp}
+                            onPointerCancel={handleConnectorPointerCancel}
+                            onKeyDown={(event) => handleConnectorKeyDown(bubble.id, event)}
+                            aria-label={`Drag connector tip for bubble ${index + 1}, or tap to flip the curve`}
+                            title="Drag to point; tap to flip curve"
+                          >
+                            <span aria-hidden="true" />
+                          </button>
+                        </Fragment>
+                      )
+                    })}
                   </div>
-                  {selectedVibe && currentText && (
+                  {hasBubblePreview && (
                     <div className="bubble-size-row" role="group" aria-label="Adjust thought bubble size">
                       <span className="bubble-size-label">Bubble size</span>
                       <div className="bubble-size-control">
                         <button
                           type="button"
                           className="bubble-size-button"
-                          onClick={() => adjustBubbleScale(-bubbleScaleStep)}
-                          disabled={bubbleScale <= minBubbleScale}
+                          onClick={() => selectedBubble && adjustBubbleScale(selectedBubble.id, -bubbleScaleStep)}
+                          disabled={!selectedBubble || selectedBubble.scale <= minBubbleScale}
                           aria-label="Decrease bubble size"
                           title="Make bubble smaller"
                         >
@@ -1112,8 +1357,8 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
                         <button
                           type="button"
                           className="bubble-size-button"
-                          onClick={() => adjustBubbleScale(bubbleScaleStep)}
-                          disabled={bubbleScale >= maxBubbleScale}
+                          onClick={() => selectedBubble && adjustBubbleScale(selectedBubble.id, bubbleScaleStep)}
+                          disabled={!selectedBubble || selectedBubble.scale >= maxBubbleScale}
                           aria-label="Increase bubble size"
                           title="Make bubble larger"
                         >
@@ -1123,7 +1368,7 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
                     </div>
                   )}
                 </div>
-                {selectedVibe && (
+                {hasRenderableBubble && (
                   <p className="drag-hint">
                     <span className="drag-hint-copy">
                       <span className="drag-hint-line">Drag the bubble.</span>
@@ -1133,7 +1378,7 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
                     <span className="drag-hint-heart" aria-hidden="true">♡</span>
                   </p>
                 )}
-                {selectedVibe && (
+                {hasRenderableBubble && (
                   <div className="result-completion result-completion-mobile">
                     <div className="completion-actions">
                       <button
@@ -1171,8 +1416,19 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
               </div>
 
               <div className="controls-column">
-                {!selectedVibe ? (
+                {!isEditorMode ? (
                   <div className="vibe-picker">
+                    <div className="custom-entry">
+                      <p className="custom-entry-copy">Know exactly what your pet should say?</p>
+                      <button
+                        type="button"
+                        className="custom-entry-button"
+                        onClick={startCustomMode}
+                      >
+                        <span className="custom-entry-icon" aria-hidden="true">✎</span>
+                        <span>Write my own line</span>
+                      </button>
+                    </div>
                     <div className="control-heading">
                       <p className="eyebrow">One tap, instant personality</p>
                     </div>
@@ -1202,89 +1458,126 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
                   <div className="result-controls" aria-live="polite">
                     <div className="control-heading result-heading">
                       <div className="result-vibe-row">
-                        <p className="eyebrow">{selectedVibe.label} · {selectedVibe.eyebrow}</p>
-                        <button type="button" className="back-to-vibes" onClick={() => setVibeId(null)}>
+                        <p className="eyebrow">
+                          {selectedVibe
+                            ? `${selectedVibe.label} · ${selectedVibe.eyebrow}`
+                            : 'YOUR JOKE'}
+                        </p>
+                        <button type="button" className="back-to-vibes" onClick={handleChangeVibe}>
                           ← Change vibe
                         </button>
                       </div>
-                      <h2>Does this sound right?</h2>
+                      <h2>{selectedVibe ? 'Does this sound right?' : 'Make your pet say it.'}</h2>
                     </div>
 
-                    <div className="line-list" aria-label="Alternate funny lines">
-                      {visibleLineIndices.map((index) => {
-                        const line = selectedVibe.lines[index]
+                    {selectedVibe && (
+                      <div className="line-list" aria-label="Alternate funny lines">
+                        {visibleLineIndices.map((index) => {
+                          const line = selectedVibe.lines[index]
 
-                        return (
-                          <button
-                            type="button"
-                            key={`${suggestionBatch}-${index}-${line}`}
-                            className={`line-chip ${lineIndex === index && !customOpen ? 'selected' : ''}`}
-                            onClick={() => chooseLine(index)}
-                          >
-                            {line}
-                          </button>
-                        )
-                      })}
-                    </div>
+                          return (
+                            <button
+                              type="button"
+                              key={`${suggestionBatch}-${index}-${line}`}
+                              className={`line-chip ${selectedBubble?.lineIndex === index && !customOpen ? 'selected' : ''}`}
+                              onClick={() => chooseLine(index)}
+                            >
+                              {line}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
 
-                    <div className="action-row">
-                      <button
-                        type="button"
-                        className="another-button"
-                        onClick={handleAnother}
-                        aria-label="Show four new funny lines"
-                      >
-                        Another one <span className="another-icon" aria-hidden="true">↻</span>
-                      </button>
-                      <button
-                        type="button"
-                        className={`write-button ${customOpen ? 'active' : ''}`}
-                        onClick={() => setCustomOpen((open) => !open)}
-                        aria-expanded={customOpen}
-                      >
-                        Write my own
-                      </button>
-                    </div>
+                    {selectedVibe && (
+                      <div className="action-row">
+                        <button
+                          type="button"
+                          className="another-button"
+                          onClick={handleAnother}
+                          aria-label="Show four new funny lines"
+                        >
+                          Another one <span className="another-icon" aria-hidden="true">↻</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={`write-button ${customOpen ? 'active' : ''}`}
+                          onClick={() => setCustomOpen((open) => !open)}
+                          aria-expanded={customOpen}
+                          aria-controls="custom-line"
+                        >
+                          <span className="write-icon" aria-hidden="true">✎</span>
+                          <span>Write my own line</span>
+                        </button>
+                      </div>
+                    )}
 
                     {customOpen && (
-                      <div className="custom-copy">
+                      <div className={`custom-copy ${!selectedVibe ? 'custom-copy-direct' : ''}`}>
                         <label htmlFor="custom-line">Your line</label>
                         <textarea
                           ref={textAreaRef}
                           id="custom-line"
-                          value={currentText}
+                          value={selectedBubble?.text ?? ''}
                           maxLength={120}
                           rows={2}
                           onChange={(event) => {
-                            setCurrentText(event.target.value)
+                            if (selectedBubble) {
+                              updateBubble(selectedBubble.id, { text: event.target.value })
+                            }
                             markCompositionDirty()
                           }}
                           placeholder="What is your pet thinking?"
                         />
-                        <span className="character-count">{currentText.length}/120</span>
+                        <span className="character-count">{selectedBubble?.text.length ?? 0}/120</span>
                       </div>
                     )}
 
-                    <div className="result-completion result-completion-desktop">
-                      <div className="completion-actions">
-                        <button type="button" className="download-button" onClick={handleDownload}>
-                          <span>Download</span>
-                          <span aria-hidden="true">↓</span>
-                        </button>
+                    <div className="bubble-manage-row">
+                      <button
+                        type="button"
+                        className="add-bubble-button"
+                        onClick={handleAddBubble}
+                        disabled={bubbles.length >= maxBubbles}
+                      >
+                        + Add another bubble
+                      </button>
+                      {bubbles.length > 1 && (
                         <button
                           type="button"
-                          className="share-button"
-                          onClick={handleShare}
-                          aria-label="Share your PetSays image"
+                          className="remove-bubble-button"
+                          onClick={handleRemoveBubble}
                         >
-                          <span className="share-icon" aria-hidden="true">↗</span>
-                          <span>Share</span>
+                          Remove bubble
                         </button>
-                      </div>
-                      <p className={`download-note ${downloaded || shareStatus ? 'is-done' : ''}`}>
-                        {shareStatus ?? (downloaded ? 'Saved as a photo. Make another?' : 'Free, includes a small PetSays mark, no signup.')}
-                      </p>
+                      )}
                     </div>
+                    {bubbles.length > 1 && (
+                      <p className="bubble-selection-note">Tap a bubble to edit it.</p>
+                    )}
+
+                    {hasRenderableBubble && (
+                      <div className="result-completion result-completion-desktop">
+                        <div className="completion-actions">
+                          <button type="button" className="download-button" onClick={handleDownload}>
+                            <span>Download</span>
+                            <span aria-hidden="true">↓</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="share-button"
+                            onClick={handleShare}
+                            aria-label="Share your PetSays image"
+                          >
+                            <span className="share-icon" aria-hidden="true">↗</span>
+                            <span>Share</span>
+                          </button>
+                        </div>
+                        <p className={`download-note ${downloaded || shareStatus ? 'is-done' : ''}`}>
+                          {shareStatus ?? (downloaded ? 'Saved as a photo. Make another?' : 'Free, includes a small PetSays mark, no signup.')}
+                        </p>
+                      </div>
+                    )}
 
                   </div>
                 )}
@@ -1293,10 +1586,7 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
         </section>
       </main>
 
-      <footer className="site-footer">
-        <span>PetSays</span>
-        <span>Small tool. Big opinions.</span>
-      </footer>
+      <PublicSiteFooter />
     </div>
   )
 }
