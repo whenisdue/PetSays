@@ -2,6 +2,7 @@ import { renderToString } from 'react-dom/server'
 import { IdeasPageApp } from './IdeasPageApp'
 import { LegalPageApp } from './LegalPageApp'
 import { PublicHome } from './components/PublicHome'
+import { StoriesApp } from './StoriesApp'
 import {
   ideasPageMetadata,
   privacyPageMetadata,
@@ -22,6 +23,10 @@ export function renderPublicPrivacy() {
 
 export function renderPublicTerms() {
   return renderToString(<LegalPageApp page="terms" />)
+}
+
+export function renderPublicStories() {
+  return renderToString(<StoriesApp />)
 }
 
 export { ideasPageMetadata, privacyPageMetadata, termsPageMetadata }

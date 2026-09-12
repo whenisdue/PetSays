@@ -25,6 +25,15 @@ if (pagePath === '/pet-thought-bubble-ideas') {
       </StrictMode>,
     )
   })
+} else if (pagePath === '/stories') {
+  void import('./StoriesApp').then(({ StoriesApp }) => {
+    hydrateRoot(
+      root,
+      <StrictMode>
+        <StoriesApp />
+      </StrictMode>,
+    )
+  })
 } else {
   void import('./ClientApp').then(({ ClientApp }) => {
     hydrateRoot(

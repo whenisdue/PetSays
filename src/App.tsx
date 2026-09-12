@@ -33,6 +33,7 @@ import {
   type BubblePlacementResult,
 } from './utils/bubblePlacement'
 import { bubbleBodySvg } from './utils/bubbleShell'
+import { drawPetSaysBrandMark, wrapCanvasText } from './utils/canvasExport'
 import { detectPetImage, type PetDetectionResult } from './utils/petDetection'
 import type { PendingLine } from './utils/pendingLine'
 
@@ -93,65 +94,6 @@ function getSuggestionIndices(lineCount: number, batchIndex: number) {
     { length: count },
     (_, offset) => (start + offset) % lineCount,
   )
-}
-
-function wrapText(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
-  const paragraphs = text.split('\n')
-  const lines: string[] = []
-
-  const splitLongWord = (word: string) => {
-    const chunks: string[] = []
-    let chunk = ''
-
-    Array.from(word).forEach((character) => {
-      const candidate = `${chunk}${character}`
-      if (context.measureText(candidate).width <= maxWidth || !chunk) {
-        chunk = candidate
-      } else {
-        chunks.push(chunk)
-        chunk = character
-      }
-    })
-
-    if (chunk) chunks.push(chunk)
-    return chunks
-  }
-
-  paragraphs.forEach((paragraph) => {
-    const words = paragraph.split(/\s+/).filter(Boolean)
-    if (words.length === 0) {
-      lines.push('')
-      return
-    }
-
-    let currentLine = ''
-
-    words.forEach((word) => {
-      if (context.measureText(word).width > maxWidth) {
-        if (currentLine) {
-          lines.push(currentLine)
-          currentLine = ''
-        }
-
-        const chunks = splitLongWord(word)
-        chunks.slice(0, -1).forEach((chunk) => lines.push(chunk))
-        currentLine = chunks.at(-1) ?? ''
-        return
-      }
-
-      const candidate = currentLine ? `${currentLine} ${word}` : word
-      if (context.measureText(candidate).width <= maxWidth || !currentLine) {
-        currentLine = candidate
-      } else {
-        lines.push(currentLine)
-        currentLine = word
-      }
-    })
-
-    if (currentLine) lines.push(currentLine)
-  })
-
-  return lines
 }
 
 function getBubbleCopyClass(text: string) {
@@ -976,67 +918,6 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
     markCompositionDirty()
   }
 
-  const drawPetSaysBrandMark = (
-    context: CanvasRenderingContext2D,
-    canvasWidth: number,
-    canvasHeight: number,
-    logoImage: HTMLImageElement,
-  ) => {
-    const shortEdge = Math.min(canvasWidth, canvasHeight)
-    const logoWidth = Math.max(160, Math.min(300, Math.round(shortEdge * 0.17)))
-    const logoHeight = Math.max(1, Math.round(logoWidth * logoImage.naturalHeight / logoImage.naturalWidth))
-    const horizontalPadding = Math.round(logoHeight * 0.42)
-    const verticalPadding = Math.round(logoHeight * 0.3)
-    const cornerRadius = Math.min(
-      (logoHeight + verticalPadding * 2) / 2,
-      logoHeight * 0.64,
-    )
-    const edgeInset = Math.max(12, shortEdge * 0.024)
-    const pillWidth = logoWidth + horizontalPadding * 2
-    const pillHeight = logoHeight + verticalPadding * 2
-    const x = canvasWidth - edgeInset - pillWidth
-    const y = canvasHeight - edgeInset - pillHeight
-
-    const logoCanvas = document.createElement('canvas')
-    logoCanvas.width = logoWidth
-    logoCanvas.height = logoHeight
-    const logoContext = logoCanvas.getContext('2d')
-    if (!logoContext) return
-
-    logoContext.imageSmoothingEnabled = true
-    logoContext.imageSmoothingQuality = 'high'
-    logoContext.drawImage(logoImage, 0, 0, logoWidth, logoHeight)
-    logoContext.globalCompositeOperation = 'source-in'
-    logoContext.fillStyle = 'rgba(255, 253, 248, 0.98)'
-    logoContext.fillRect(0, 0, logoWidth, logoHeight)
-
-    context.save()
-
-    context.beginPath()
-    context.moveTo(x + cornerRadius, y)
-    context.lineTo(x + pillWidth - cornerRadius, y)
-    context.quadraticCurveTo(x + pillWidth, y, x + pillWidth, y + cornerRadius)
-    context.lineTo(x + pillWidth, y + pillHeight - cornerRadius)
-    context.quadraticCurveTo(
-      x + pillWidth,
-      y + pillHeight,
-      x + pillWidth - cornerRadius,
-      y + pillHeight,
-    )
-    context.lineTo(x + cornerRadius, y + pillHeight)
-    context.quadraticCurveTo(x, y + pillHeight, x, y + pillHeight - cornerRadius)
-    context.lineTo(x, y + cornerRadius)
-    context.quadraticCurveTo(x, y, x + cornerRadius, y)
-    context.closePath()
-
-    context.fillStyle = 'rgba(32, 31, 28, 0.68)'
-    context.fill()
-    context.imageSmoothingEnabled = true
-    context.imageSmoothingQuality = 'high'
-    context.drawImage(logoCanvas, x + horizontalPadding, y + verticalPadding, logoWidth, logoHeight)
-    context.restore()
-  }
-
   const createPetSaysImageBlob = async (): Promise<Blob | null> => {
     const exportableBubbles = bubbles.filter((bubble) => Boolean(bubble.text.trim()))
     if (!photo || !hasRenderableBubble || !stageRef.current || exportableBubbles.length === 0) return null
@@ -1107,7 +988,7 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
       const textX = (textRect.left - stageRect.left) * scale + textRect.width * scale / 2
       const textY = (textRect.top - stageRect.top) * scale + textRect.height * scale / 2
       const textWidth = Math.max(1, textRect.width * scale - padding * 2)
-      const lines = wrapText(context, bubble.text, textWidth)
+      const lines = wrapCanvasText(context, bubble.text, textWidth)
       const totalHeight = lines.length * lineHeight
       const firstY = textY - totalHeight / 2 + lineHeight / 2
       lines.forEach((line, index) => context.fillText(line, textX, firstY + index * lineHeight))
@@ -1209,16 +1090,21 @@ function App({ initialFile = null, pendingLine = null }: AppProps) {
       </header>
 
       <main id="top">
-        <section className={`maker-section ${isEditorMode ? 'has-result' : 'is-vibe-picker'}`} aria-labelledby="maker-title">
+        <section
+          className={`maker-section ${isEditorMode ? 'has-result' : 'is-vibe-picker'}`}
+          aria-labelledby={isEditorMode ? 'maker-title' : undefined}
+          aria-label={!isEditorMode ? 'Choose a personality for your pet' : undefined}
+        >
             <DecorativeSpots page={isEditorMode ? 'result' : 'picker'} />
-            <div className="maker-topline">
-              <div>
-                {!isEditorMode && <p className="eyebrow">Photo received</p>}
-                <h1 id="maker-title" className={isEditorMode ? 'result-page-title' : 'vibe-picker-title'}>
-                  {isEditorMode ? 'Your pet has opinions.' : 'Pick a vibe.'}
-                </h1>
+            {isEditorMode && (
+              <div className="maker-topline">
+                <div>
+                  <h1 id="maker-title" className="result-page-title">
+                    Your pet has opinions.
+                  </h1>
+                </div>
               </div>
-            </div>
+            )}
 
             <input
               ref={fileInputRef}

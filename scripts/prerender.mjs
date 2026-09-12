@@ -24,6 +24,7 @@ const publicPages = [
     outputPath: 'terms/index.html',
     metadataExport: 'termsPageMetadata',
   },
+  { render: 'renderPublicStories', outputPath: 'stories/index.html' },
 ]
 
 function escapeAttribute(value) {
