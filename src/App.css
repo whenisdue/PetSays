@@ -5385,6 +5385,15 @@ h2 {
     box-shadow: 0 12px 24px rgba(58, 43, 29, 0.1);
   }
 
+  /* Mobile order: creation first, daily content second */
+  .maker-home-panel {
+    order: 1;
+  }
+
+  .today-panel {
+    order: 2;
+  }
+
   .today-panel {
     grid-template-areas:
       "copy"
@@ -5535,14 +5544,14 @@ h2 {
 
   .maker-home-panel {
     display: grid;
-    grid-template-columns: minmax(0, 1.18fr) minmax(125px, 0.82fr);
+    grid-template-columns: 1fr;
     grid-template-areas:
-      "kicker kicker"
-      "title title"
-      "subtitle subtitle"
-      "upload story"
-      "trust trust";
-    column-gap: 9px;
+      "kicker"
+      "title"
+      "subtitle"
+      "upload"
+      "story"
+      "trust";
     padding: 21px 14px 16px;
   }
 
@@ -5566,9 +5575,9 @@ h2 {
 
   .home-upload-cta {
     grid-area: upload;
-    min-height: 66px;
+    min-height: 72px;
     margin-top: 14px;
-    padding: 9px 11px;
+    padding: 10px 14px;
   }
 
   .home-upload-icon {
@@ -5577,27 +5586,32 @@ h2 {
   }
 
   .home-upload-copy strong {
-    font-size: clamp(0.9rem, 3.8vw, 1.05rem);
+    font-size: 1rem;
+    white-space: normal;
   }
 
   .home-upload-copy small {
-    font-size: 0.62rem;
+    font-size: 0.68rem;
+    white-space: normal;
+  }
+
+  .home-upload-arrow {
+    margin-left: auto;
   }
 
   .maker-story-link {
     grid-area: story;
     width: 100%;
-    min-height: 66px;
-    margin: 14px 0 0;
-    padding: 8px 10px;
-    gap: 7px;
-    font-size: 0.72rem;
-    white-space: nowrap;
+    min-height: 52px;
+    margin: 10px 0 0;
+    padding: 9px 14px;
+    font-size: 0.78rem;
+    white-space: normal;
   }
 
   .maker-home-trust {
     grid-area: trust;
-    margin: 9px 0 0;
+    margin: 10px 0 0;
   }
 
   .maker-steps {
