@@ -69,6 +69,15 @@ function applyPageMetadata(html, metadata) {
   return nextHtml
 }
 
+function applyDailyStoryDate(html, dateKey) {
+  return replaceHeadTag(
+    html,
+    /<meta name="theme-color" content="[^"]*" \/>/,
+    `$&\n    <meta name="petsays-daily-date" content="${escapeAttribute(dateKey)}" />`,
+    'daily story date',
+  )
+}
+
 try {
   await build({
     configFile: false,
@@ -93,21 +102,27 @@ try {
   const htmlPath = resolve(projectRoot, 'dist/index.html')
   const html = await readFile(htmlPath, 'utf8')
   const rootMarker = '<div id="root"></div>'
+  const dailyStoryDateKey = serverEntry.getPublicHomeDateKey()
 
   if (!html.includes(rootMarker)) {
     throw new Error(`Could not find ${rootMarker} in ${htmlPath}`)
   }
 
   for (const page of publicPages) {
-    const renderedPage = serverEntry[page.render]()
+    const renderedPage = page.outputPath === 'index.html'
+      ? serverEntry[page.render](dailyStoryDateKey)
+      : serverEntry[page.render]()
     const rootMarkupStart = renderedPage.indexOf('<div class="')
     if (rootMarkupStart === -1) throw new Error(`Could not find rendered root markup for ${page.outputPath}`)
 
     const renderedPrelude = renderedPage.slice(0, rootMarkupStart)
     const renderedRoot = renderedPage.slice(rootMarkupStart)
-    const pageTemplate = page.metadataExport
+    let pageTemplate = page.metadataExport
       ? applyPageMetadata(html, serverEntry[page.metadataExport])
       : html
+    if (page.outputPath === 'index.html') {
+      pageTemplate = applyDailyStoryDate(pageTemplate, dailyStoryDateKey)
+    }
     const htmlWithPrelude = pageTemplate.replace('</head>', `${renderedPrelude}</head>`)
     const outputPath = resolve(projectRoot, 'dist', page.outputPath)
 

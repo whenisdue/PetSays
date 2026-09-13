@@ -25,3 +25,10 @@ export function getRandomStory(vibeId: VibeId): Story {
   lastStoryIdByVibe.set(vibeId, nextStory.id)
   return nextStory
 }
+
+export function getRandomStoryLine(vibeId: VibeId, excludedLines: string[] = []) {
+  const vibeLines = getStoriesForVibe(vibeId).flatMap((story) => story.slides)
+  const availableLines = vibeLines.filter((line) => !excludedLines.includes(line))
+  const lines = availableLines.length > 0 ? availableLines : vibeLines
+  return lines[Math.floor(Math.random() * lines.length)] ?? ''
+}

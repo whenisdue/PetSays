@@ -68,7 +68,7 @@ export function HeroUploadRail({ variant }: { variant: 'mobile' | 'desktop' }) {
       <p className="upload-trust">No signup · Free to use</p>
       <a className="stories-home-link" href="/stories">
         <span className="stories-home-link-kicker">Want more?</span>
-        <span>Make a 7-slide story</span>
+        <span>Make a pet story</span>
         <span aria-hidden="true">→</span>
       </a>
     </div>

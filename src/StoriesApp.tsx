@@ -23,7 +23,7 @@ import {
   type CurveDirection,
 } from './utils/bubbleConnector'
 import { getBubblePositionBounds } from './utils/bubblePlacement'
-import { getRandomStory } from './utils/storyEngine'
+import { getRandomStory, getRandomStoryLine } from './utils/storyEngine'
 import {
   createStoryFiles,
   createStoryImageBlobs,
@@ -63,6 +63,10 @@ const defaultFrameTarget: ConnectorTarget = { x: 0.5, y: 0.72 }
 const minBubbleScale = 0.74
 const maxBubbleScale = 1.28
 const bubbleScaleStep = 0.08
+const minStorySlides = 1
+const defaultStorySlides = 3
+const maxStorySlides = 7
+const storyTextLimit = 120
 
 const storiesIntroPreviewFrames = [
   { line: 'Hmm… what’s this?', color: '#ffda63', rotation: '-6deg', left: '27%', top: '4%' },
@@ -72,6 +76,10 @@ const storiesIntroPreviewFrames = [
 
 function getStorySlideKey(storyId: string, slideIndex: number) {
   return `${storyId}:${slideIndex}`
+}
+
+type StoryDraft = Omit<Story, 'vibeId'> & {
+  vibeId: VibeId | null
 }
 
 function createStoryBubbleLayout(): StoryBubbleLayout {
@@ -106,7 +114,8 @@ export function StoriesApp() {
   const [step, setStep] = useState<StoriesStep>('upload')
   const [photo, setPhoto] = useState<StoryPhoto | null>(null)
   const [vibeId, setVibeId] = useState<VibeId | null>(null)
-  const [story, setStory] = useState<Story | null>(null)
+  const [story, setStory] = useState<StoryDraft | null>(null)
+  const [suggestionPool, setSuggestionPool] = useState<string[]>([])
   const [activeSlide, setActiveSlide] = useState(0)
   const [storyLayout, setStoryLayout] = useState<StoryBubbleLayout | null>(null)
   // These are measured DOM boxes, not editable layout state. Each slide needs
@@ -154,12 +163,16 @@ export function StoriesApp() {
     }))
   }, [])
 
-  const loadStory = useCallback((nextStory: Story) => {
+  const loadStory = useCallback((nextStory: StoryDraft, suggestions = nextStory.slides) => {
     setExportStatus(null)
     setBubbleMeasurements({})
     setSlideMeasurements({})
     setStoryScaleLimit(maxBubbleScale)
-    setStory(nextStory)
+    setSuggestionPool(suggestions)
+    setStory({
+      ...nextStory,
+      slides: nextStory.slides.slice(0, defaultStorySlides),
+    })
     resetCarousel()
   }, [resetCarousel])
 
@@ -178,6 +191,7 @@ export function StoriesApp() {
     setExportStatus(null)
     setVibeId(null)
     setStory(null)
+    setSuggestionPool([])
     setStoryLayout(null)
     setBubbleMeasurements({})
     setSlideMeasurements({})
@@ -193,12 +207,25 @@ export function StoriesApp() {
   }
 
   const handleVibe = (nextVibeId: VibeId) => {
+    const nextStory = getRandomStory(nextVibeId)
     setVibeId(nextVibeId)
     if (!storyLayout) {
       curveDirectionInitializedRef.current = false
       setStoryLayout(createStoryBubbleLayout())
     }
-    loadStory(getRandomStory(nextVibeId))
+    loadStory(nextStory, nextStory.slides)
+    setStep('story')
+  }
+
+  const handleWriteOwnStory = () => {
+    setVibeId(null)
+    curveDirectionInitializedRef.current = false
+    setStoryLayout(createStoryBubbleLayout())
+    loadStory({
+      id: 'custom-story',
+      vibeId: null,
+      slides: Array.from({ length: defaultStorySlides }, () => ''),
+    }, [])
     setStep('story')
   }
 
@@ -206,7 +233,60 @@ export function StoriesApp() {
     if (!vibeId) return
     curveDirectionInitializedRef.current = false
     setStoryLayout(createStoryBubbleLayout())
-    loadStory(getRandomStory(vibeId))
+    const nextStory = getRandomStory(vibeId)
+    loadStory(nextStory, nextStory.slides)
+  }
+
+  const updateSlideText = useCallback((slideIndex: number, value: string) => {
+    setExportStatus(null)
+    setStory((current) => {
+      if (!current || slideIndex < 0 || slideIndex >= current.slides.length) return current
+      return {
+        ...current,
+        slides: current.slides.map((line, index) => index === slideIndex ? value.slice(0, storyTextLimit) : line),
+      }
+    })
+  }, [])
+
+  const addSlide = () => {
+    if (!story || story.slides.length >= maxStorySlides) return
+    const usedLines = new Set(story.slides)
+    const nextSuggestion = suggestionPool.find((line) => line.length > 0 && !usedLines.has(line)) ?? ''
+    const nextIndex = story.slides.length
+    setExportStatus(null)
+    setBubbleMeasurements({})
+    setSlideMeasurements({})
+    setStoryScaleLimit(maxBubbleScale)
+    setStory({ ...story, slides: [...story.slides, nextSuggestion] })
+    setActiveSlide(nextIndex)
+    window.requestAnimationFrame(() => {
+      trackRef.current?.scrollTo({ left: trackRef.current.clientWidth * nextIndex, behavior: 'smooth' })
+    })
+  }
+
+  const removeSlide = () => {
+    if (!story || story.slides.length <= minStorySlides) return
+    const nextSlides = story.slides.filter((_, index) => index !== activeSlide)
+    const nextIndex = Math.min(activeSlide, nextSlides.length - 1)
+    setExportStatus(null)
+    setBubbleMeasurements({})
+    setSlideMeasurements({})
+    setStoryScaleLimit(maxBubbleScale)
+    setStory({ ...story, slides: nextSlides })
+    setActiveSlide(nextIndex)
+    window.requestAnimationFrame(() => {
+      trackRef.current?.scrollTo({ left: trackRef.current.clientWidth * nextIndex, behavior: 'auto' })
+    })
+  }
+
+  const anotherSuggestion = () => {
+    if (!story || !vibeId) return
+    const currentLine = story.slides[activeSlide] ?? ''
+    const otherLines = story.slides.filter((_, index) => index !== activeSlide)
+    const excludedLines = new Set([currentLine, ...otherLines])
+    const nextSuggestion = suggestionPool.find((line) => line.length > 0 && !excludedLines.has(line))
+      ?? getRandomStoryLine(vibeId, [...excludedLines])
+    updateSlideText(activeSlide, nextSuggestion)
   }
 
   const goToSlide = (index: number, behavior: ScrollBehavior = 'smooth') => {
@@ -655,7 +735,7 @@ export function StoriesApp() {
   const handleDownloadStory = async () => {
     if (isExporting) return
     setIsExporting(true)
-    setExportStatus('Preparing 7 slides…')
+    setExportStatus(`Preparing ${story?.slides.length ?? 0} slides…`)
 
     try {
       const files = await createStoryExportFiles()
@@ -671,7 +751,7 @@ export function StoriesApp() {
   const handleShareStory = async () => {
     if (isExporting) return
     setIsExporting(true)
-    setExportStatus('Preparing 7 slides…')
+    setExportStatus(`Preparing ${story?.slides.length ?? 0} slides…`)
 
     try {
       const files = await createStoryExportFiles()
@@ -734,11 +814,11 @@ export function StoriesApp() {
             <div className="stories-intro-copy">
               <p className="eyebrow">PETSAYS STORIES · EXPERIMENT</p>
               <h1 id="stories-title">Turn one<br />pet photo<br />into a whole<br />story.</h1>
-              <p>Pick a vibe, then swipe through seven escalating thoughts.</p>
+              <p>Pick a vibe for suggestions, then build a short pet story.</p>
             </div>
 
             <div className="stories-intro-visual" role="group" aria-label="Example story preview showing the same pet across three escalating frames">
-              <span className="stories-intro-note stories-intro-note-top" aria-hidden="true">SAME PHOTO.<br />7 ESCALATING<br />THOUGHTS.</span>
+              <span className="stories-intro-note stories-intro-note-top" aria-hidden="true">SAME PHOTO.<br />UP TO 7<br />THOUGHTS.</span>
               <span className="stories-intro-note stories-intro-note-side" aria-hidden="true">SWIPE THROUGH<br />THE STORY!</span>
               <span className="stories-intro-note stories-intro-note-bottom" aria-hidden="true">SAME PET.<br />BIGGER FEELINGS.</span>
               <span className="stories-intro-burst stories-intro-burst-sun" aria-hidden="true" />
@@ -756,7 +836,7 @@ export function StoriesApp() {
                       '--preview-frame-left': frame.left,
                       '--preview-frame-top': frame.top,
                     } as CSSProperties}
-                    aria-label={`Story frame ${index + 1} of 7: ${frame.line}`}
+                    aria-label={`Example story frame ${index + 1} of ${storiesIntroPreviewFrames.length}: ${frame.line}`}
                   >
                     <img
                       src="/demo/pet-cat-gray.jpg"
@@ -767,7 +847,7 @@ export function StoriesApp() {
                     <div className="stories-intro-preview-bubble">
                       <BubbleGraphic kind="thought" text={frame.line} />
                     </div>
-                    <span className="stories-intro-preview-counter" aria-hidden="true">{index + 1}/7</span>
+                    <span className="stories-intro-preview-counter" aria-hidden="true">{index + 1}/{storiesIntroPreviewFrames.length}</span>
                   </article>
                 ))}
               </div>
@@ -775,7 +855,7 @@ export function StoriesApp() {
               <div className="stories-intro-preview-controls" aria-hidden="true">
                 <span className="stories-intro-preview-arrow">←</span>
                 <span className="stories-intro-preview-dots">
-                  {Array.from({ length: 7 }, (_, index) => (
+                  {storiesIntroPreviewFrames.map((_, index) => (
                     <span key={index} className={index === 0 ? 'is-active' : ''} />
                   ))}
                 </span>
@@ -791,7 +871,7 @@ export function StoriesApp() {
                 </svg>
                 Upload a pet photo
               </button>
-              <p className="stories-trust">One photo. Seven slides. No signup.</p>
+              <p className="stories-trust">One photo. Up to 7 slides. No signup.</p>
             </div>
           </section>
         )}
@@ -801,14 +881,20 @@ export function StoriesApp() {
             <div className="stories-section-heading">
               <div>
                 <p className="eyebrow">PHOTO READY</p>
-                <h1 id="stories-vibes-title">Pick a vibe for the story.</h1>
+                <h1 id="stories-vibes-title">Pick a vibe for suggestions.</h1>
               </div>
-              <button type="button" className="stories-text-button" onClick={changePhoto}>Change photo</button>
             </div>
             <div className="stories-photo-preview">
               <img src={photo.src} alt={`Uploaded pet photo: ${photo.name}`} />
-              <span>One photo. Seven thoughts.</span>
+              <div className="stories-photo-preview-copy">
+                <span>One photo. Up to 7 thoughts.</span>
+                <div className="stories-photo-preview-actions">
+                  <button type="button" className="stories-text-button" onClick={handleWriteOwnStory}>Write my own story <span aria-hidden="true">→</span></button>
+                  <button type="button" className="stories-tertiary-button" onClick={changePhoto}>Change photo</button>
+                </div>
+              </div>
             </div>
+            <p className="stories-vibe-prompt">Or pick a vibe for inspiration</p>
             <div className="stories-vibe-grid" aria-label="Story vibes">
               {vibes.map((vibe) => (
                 <button
@@ -826,14 +912,14 @@ export function StoriesApp() {
           </section>
         )}
 
-        {step === 'story' && photo && story && vibeId && (
+        {step === 'story' && photo && story && (
           <section className="stories-viewer" aria-labelledby="stories-viewer-title">
             <div className="stories-viewer-heading">
               <div>
-                <p className="eyebrow">{vibes.find((vibe) => vibe.id === vibeId)?.label} STORY</p>
+                <p className="eyebrow">{vibeId ? `${vibes.find((vibe) => vibe.id === vibeId)?.label} STORY` : 'YOUR STORY'}</p>
                 <h1 id="stories-viewer-title">Swipe through the plot.</h1>
               </div>
-              <button type="button" className="stories-text-button" onClick={() => setStep('vibes')}>Change vibe</button>
+              <button type="button" className="stories-text-button" onClick={() => setStep('vibes')}>{vibeId ? 'Change vibe' : 'Choose a vibe'}</button>
             </div>
 
             <div className="stories-editor-workspace">
@@ -944,6 +1030,31 @@ export function StoriesApp() {
               </div>
 
               <aside className="stories-editor-controls" aria-label="Story editing controls">
+                <div className="stories-text-editor">
+                  <label htmlFor="story-thought-input">Thought for slide {activeSlide + 1}</label>
+                  <textarea
+                    id="story-thought-input"
+                    value={story.slides[activeSlide] ?? ''}
+                    maxLength={storyTextLimit}
+                    rows={3}
+                    placeholder="Write what your pet is thinking…"
+                    onChange={(event) => updateSlideText(activeSlide, event.target.value)}
+                  />
+                  <div className="stories-text-editor-footer">
+                    {vibeId ? (
+                      <button type="button" className="stories-inline-action" onClick={anotherSuggestion}>Another suggestion</button>
+                    ) : (
+                      <span>Write your own thought for this slide.</span>
+                    )}
+                    <span>{(story.slides[activeSlide] ?? '').length} / {storyTextLimit}</span>
+                  </div>
+                </div>
+
+                <div className="stories-slide-actions" aria-label="Manage story slides">
+                  <button type="button" className="stories-inline-action" onClick={addSlide} disabled={story.slides.length >= maxStorySlides}>+ Add slide</button>
+                  <button type="button" className="stories-inline-action stories-remove-slide" onClick={removeSlide} disabled={story.slides.length <= minStorySlides}>Remove slide</button>
+                </div>
+
                 {storyLayout && (
                   <div className="bubble-size-row stories-bubble-size-row" role="group" aria-label="Adjust story thought bubble size">
                     <div className="stories-control-copy">
@@ -1020,7 +1131,7 @@ export function StoriesApp() {
                     onClick={handleDownloadStory}
                     disabled={isExporting}
                   >
-                    {isExporting ? 'Preparing 7 slides…' : 'Download story'}
+                    {isExporting ? `Preparing ${story.slides.length} slides…` : 'Download story'}
                     <span aria-hidden="true">↓</span>
                   </button>
                   <button
@@ -1036,7 +1147,7 @@ export function StoriesApp() {
                 </div>
 
                 <div className="stories-actions">
-                  <button type="button" className="stories-secondary-button" onClick={handleAnotherStory}>Another story ↻</button>
+                  <button type="button" className="stories-secondary-button" onClick={handleAnotherStory} disabled={!vibeId}>Another story ↻</button>
                   <button type="button" className="stories-text-button" onClick={changePhoto}>Change photo</button>
                 </div>
               </aside>

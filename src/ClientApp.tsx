@@ -8,11 +8,17 @@ import {
   type ChangeEvent,
 } from 'react'
 import { PublicHome } from './components/PublicHome'
+import { getLocalDateKey } from './data/dailyStories'
 import { clearPendingLine, readPendingLine, type PendingLine } from './utils/pendingLine'
 
 const EditorApp = lazy(() => import('./App.tsx'))
 
-export function ClientApp() {
+type ClientAppProps = {
+  dailyStoryDateKey?: string
+}
+
+export function ClientApp({ dailyStoryDateKey }: ClientAppProps) {
+  const [resolvedDailyStoryDateKey, setResolvedDailyStoryDateKey] = useState(dailyStoryDateKey)
   const [initialFile, setInitialFile] = useState<File | null>(null)
   const [submittedPendingLine, setSubmittedPendingLine] = useState<PendingLine | null>(null)
   const [editorRequested, setEditorRequested] = useState(false)
@@ -21,6 +27,22 @@ export function ClientApp() {
 
   useEffect(() => {
     pendingLineRef.current = readPendingLine()
+  }, [])
+
+  useEffect(() => {
+    let midnightTimer: number | undefined
+
+    const syncDate = () => {
+      setResolvedDailyStoryDateKey(getLocalDateKey())
+      const now = new Date()
+      const nextLocalDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+      midnightTimer = window.setTimeout(syncDate, Math.max(1000, nextLocalDay.getTime() - now.getTime() + 50))
+    }
+
+    syncDate()
+    return () => {
+      if (midnightTimer !== undefined) window.clearTimeout(midnightTimer)
+    }
   }, [])
 
   const handleUpload = useCallback(() => {
@@ -43,6 +65,7 @@ export function ClientApp() {
       fileInputRef={fileInputRef}
       onFileChange={handleFileChange}
       onUpload={handleUpload}
+      dailyStoryDateKey={resolvedDailyStoryDateKey}
     />
   )
 

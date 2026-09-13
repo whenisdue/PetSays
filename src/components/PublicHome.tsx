@@ -4,10 +4,9 @@ import { DailyStoryReader } from './DailyStoryReader'
 import { PublicSiteFooter, PublicSiteHeader } from './PublicSiteChrome'
 import {
   dailyEpisodes,
-  getFeaturedDailyEpisode,
   vibeHighlights,
-  type DailyEpisode,
 } from '../data/dailyEpisodes'
+import { getDailyStoryForDate, getDailyStoryForDateKey } from '../data/dailyStories'
 import { getVibe, type VibeId } from '../data/presets'
 
 type PublicHomeProps = {
@@ -15,6 +14,7 @@ type PublicHomeProps = {
   onFileChange?: ChangeEventHandler<HTMLInputElement>
   onHome?: MouseEventHandler<HTMLAnchorElement>
   onUpload?: () => void
+  dailyStoryDateKey?: string
 }
 
 const noop = () => undefined
@@ -23,8 +23,14 @@ export function PublicHome({
   onFileChange,
   onHome,
   onUpload = noop,
+  dailyStoryDateKey,
 }: PublicHomeProps) {
-  const [featuredEpisode] = useState<DailyEpisode>(() => getFeaturedDailyEpisode())
+  const featuredStory = useMemo(
+    () => dailyStoryDateKey
+      ? getDailyStoryForDateKey(dailyStoryDateKey)
+      : getDailyStoryForDate(),
+    [dailyStoryDateKey],
+  )
   const [isReaderOpen, setIsReaderOpen] = useState(false)
   const [activeVibeId, setActiveVibeId] = useState<VibeId | null>(null)
   const closeReader = useCallback(() => setIsReaderOpen(false), [])
@@ -63,11 +69,16 @@ export function PublicHome({
             <div className="today-copy-column">
               <div className="today-copy">
                 <p className="home-kicker">PETSAYS TODAY</p>
-                <h1 id="today-title">{featuredEpisode.title}</h1>
+                <h1 id="today-title">{featuredStory?.title ?? 'A story is on its way.'}</h1>
                 <p className="today-subtitle">A fresh PetSays episode. New every day.</p>
               </div>
               <div className="today-actions">
-                <button type="button" className="today-cta" onClick={() => setIsReaderOpen(true)}>
+                <button
+                  type="button"
+                  className="today-cta"
+                  onClick={() => featuredStory && setIsReaderOpen(true)}
+                  disabled={!featuredStory}
+                >
                   <span>Read today’s story</span>
                   <span aria-hidden="true">→</span>
                 </button>
@@ -77,54 +88,62 @@ export function PublicHome({
 
             <div className="today-featured">
               <div className="today-featured-image">
-                <img
-                  src={featuredEpisode.image}
-                  alt={featuredEpisode.alt}
-                  width="1200"
-                  height="1500"
-                  fetchPriority="high"
-                />
-                <div className="today-featured-bubble" aria-hidden="true">
-                  <BubbleGraphic kind="thought" text={featuredEpisode.slides[0]} />
-                </div>
-                <span className="today-stamp" aria-hidden="true">Today’s<br />PetSays</span>
+                {featuredStory ? (
+                  <>
+                    <img
+                      src={featuredStory.cover}
+                      alt={featuredStory.alt}
+                      width="1200"
+                      height="1500"
+                      fetchPriority="high"
+                    />
+                    <span className="today-stamp" aria-hidden="true">Today’s<br />PetSays</span>
+                  </>
+                ) : (
+                  <p className="today-featured-empty">Today’s story is on its way.</p>
+                )}
               </div>
             </div>
 
-            <div className="today-preview" aria-label={`${featuredEpisode.slides.length}-part story preview`}>
-              <div className="mobile-story-progress">
-                <span className="mobile-story-dots" aria-hidden="true">
-                  {featuredEpisode.slides.map((_, index) => (
-                    <span key={`${featuredEpisode.id}-progress-${index}`} className={index === 0 ? 'is-active' : undefined} />
+            {featuredStory ? (
+              <div className="today-preview" aria-label={`${featuredStory.slides.length}-part story preview`}>
+                <div className="mobile-story-progress">
+                  <span className="mobile-story-dots" aria-hidden="true">
+                    {featuredStory.slides.map((_, index) => (
+                      <span key={`${featuredStory.date}-progress-${index}`} className={index === 0 ? 'is-active' : undefined} />
+                    ))}
+                  </span>
+                  <span className="mobile-story-progress-copy">
+                    <strong>{featuredStory.slides.length}-part story</strong>
+                    <small>Episode 1 of {featuredStory.slides.length}</small>
+                  </span>
+                </div>
+                <div
+                  className="preview-cards"
+                  style={{ '--story-slide-count': featuredStory.slides.length } as CSSProperties}
+                >
+                  {featuredStory.slides.map((slide, index) => (
+                    <div
+                      key={`${featuredStory.date}-${index}`}
+                      className={`preview-card preview-card-${index + 1} ${index > 1 ? 'is-locked' : ''}`}
+                      aria-hidden="true"
+                    >
+                      <img src={slide} alt="" loading="lazy" width="240" height="150" />
+                      <span className="preview-number">{index + 1}</span>
+                      {index > 1 && <span className="preview-lock">●</span>}
+                    </div>
                   ))}
-                </span>
-                <span className="mobile-story-progress-copy">
-                  <strong>{featuredEpisode.slides.length}-part story</strong>
-                  <small>Episode 1 of {featuredEpisode.slides.length}</small>
-                </span>
+                </div>
+                <button type="button" className="preview-count" onClick={() => setIsReaderOpen(true)}>
+                  <strong>{featuredStory.slides.length}-part<br />story</strong>
+                  <span>+{featuredStory.slides.length - 1} more <span aria-hidden="true">→</span></span>
+                </button>
               </div>
-              <div className="preview-cards">
-                {featuredEpisode.slides.map((line, index) => (
-                  <div
-                    key={`${featuredEpisode.id}-${index}`}
-                    className={`preview-card preview-card-${index + 1} ${index > 1 ? 'is-locked' : ''}`}
-                    aria-hidden="true"
-                  >
-                    <img src={featuredEpisode.image} alt="" loading="lazy" width="240" height="150" />
-                    <span className="preview-number">{index + 1}</span>
-                    {index < 2 ? (
-                      <span className="preview-line">{line}</span>
-                    ) : (
-                      <span className="preview-lock">●</span>
-                    )}
-                  </div>
-                ))}
+            ) : (
+              <div className="today-preview today-preview-empty" role="status">
+                No dated story is available yet.
               </div>
-              <button type="button" className="preview-count" onClick={() => setIsReaderOpen(true)}>
-                <strong>{featuredEpisode.slides.length}-part<br />story</strong>
-                <span>+{featuredEpisode.slides.length - 1} more <span aria-hidden="true">→</span></span>
-              </button>
-            </div>
+            )}
           </section>
 
           <section id="make-your-own" className="maker-home-panel" aria-labelledby="make-title">
@@ -146,6 +165,15 @@ export function PublicHome({
               </span>
               <span className="home-upload-arrow" aria-hidden="true">→</span>
             </button>
+
+            <a className="maker-story-link" href="/stories">
+              <span className="maker-story-copy">
+                <strong>Make a pet story</strong>
+                <small>Turn one photo into 3–7 funny slides.</small>
+              </span>
+              <span className="maker-story-arrow" aria-hidden="true">→</span>
+            </a>
+
             <p className="maker-home-trust">No signup · Free to use</p>
 
             <ol className="maker-steps" aria-label="How PetSays works">
@@ -163,10 +191,6 @@ export function PublicHome({
               </li>
             </ol>
 
-            <a className="maker-story-link" href="/stories">
-              <span>Make a 7-slide story</span>
-              <span aria-hidden="true">→</span>
-            </a>
           </section>
         </section>
 
@@ -271,12 +295,14 @@ export function PublicHome({
       </main>
 
       <PublicSiteFooter />
-      <DailyStoryReader
-        episode={featuredEpisode}
-        isOpen={isReaderOpen}
-        onClose={closeReader}
-        onUpload={onUpload}
-      />
+      {featuredStory && (
+        <DailyStoryReader
+          episode={featuredStory}
+          isOpen={isReaderOpen}
+          onClose={closeReader}
+          onUpload={onUpload}
+        />
+      )}
     </div>
   )
 }

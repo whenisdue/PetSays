@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { BubbleGraphic } from './BubbleGraphic'
-import type { DailyEpisode } from '../data/dailyEpisodes'
+import type { DailyStory } from '../data/dailyStories'
 
 type DailyStoryReaderProps = {
-  episode: DailyEpisode
+  episode: DailyStory
   isOpen: boolean
   onClose: () => void
   onUpload?: () => void
@@ -75,10 +74,7 @@ export function DailyStoryReader({ episode, isOpen, onClose, onUpload }: DailySt
         </div>
 
         <div className="daily-reader-stage" aria-live="polite">
-          <img src={episode.image} alt={episode.alt} />
-          <div className="daily-reader-bubble">
-            <BubbleGraphic kind="thought" text={slide} />
-          </div>
+          <img src={slide} alt={episode.alt} />
           <span className="daily-reader-counter">{activeSlide + 1} / {episode.slides.length}</span>
         </div>
 
@@ -95,7 +91,7 @@ export function DailyStoryReader({ episode, isOpen, onClose, onUpload }: DailySt
           <div className="daily-reader-dots" aria-label={`Slide ${activeSlide + 1} of ${episode.slides.length}`}>
             {episode.slides.map((_, index) => (
               <button
-                key={`${episode.id}-${index}`}
+                key={`${episode.date}-${index}`}
                 className={index === activeSlide ? 'is-active' : ''}
                 type="button"
                 onClick={() => setActiveSlide(index)}

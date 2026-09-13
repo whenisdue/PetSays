@@ -16,8 +16,8 @@ export type VibeHighlight = {
   image: string
 }
 
-// A small, authored launch library is enough to make the daily experience feel
-// alive without pretending that PetSays is a social feed.
+// Editorial/archive cards for Browse by Vibe and More from PetSays. The Today
+// pipeline is driven by the generated dated-story manifest instead.
 export const dailyEpisodes: DailyEpisode[] = [
   {
     id: 'breakfast-investigation',
@@ -118,22 +118,3 @@ export const vibeHighlights: VibeHighlight[] = [
   { id: 'suspicious', description: "I'm watching you.", image: '/demo/pet-tabby.jpg' },
   { id: 'chaos', description: 'Normal is boring.', image: '/demo/pet-dog-close.jpg' },
 ]
-
-const launchDate = new Date(2026, 8, 12)
-const millisecondsPerLocalDay = 24 * 60 * 60 * 1000
-
-export function getLocalDayIndex(date: Date = new Date()) {
-  const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-  const launchDay = new Date(
-    launchDate.getFullYear(),
-    launchDate.getMonth(),
-    launchDate.getDate(),
-  )
-
-  return Math.floor((localDate.getTime() - launchDay.getTime()) / millisecondsPerLocalDay)
-}
-
-export function getFeaturedDailyEpisode(date: Date = new Date()) {
-  const index = ((getLocalDayIndex(date) % dailyEpisodes.length) + dailyEpisodes.length) % dailyEpisodes.length
-  return dailyEpisodes[index]
-}
