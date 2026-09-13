@@ -14,5 +14,18 @@ export const dailyStoryManifest = [
       "/daily-stories/2026-09-13/04.jpg",
       "/daily-stories/2026-09-13/05.jpg"
     ]
+  },
+  {
+    "date": "2026-09-14",
+    "title": "The Under-Table Negotiation",
+    "vibe": "hungry",
+    "alt": "Small scruffy dog sitting under a dining table and looking up expectantly during dinner",
+    "cover": "/daily-stories/2026-09-14/cover.jpg",
+    "slides": [
+      "/daily-stories/2026-09-14/01.jpg",
+      "/daily-stories/2026-09-14/02.jpg",
+      "/daily-stories/2026-09-14/03.jpg",
+      "/daily-stories/2026-09-14/04.jpg"
+    ]
   }
 ] as const

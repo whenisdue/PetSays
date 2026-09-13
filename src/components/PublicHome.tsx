@@ -1,13 +1,9 @@
 import { useCallback, useMemo, useState, type ChangeEventHandler, type CSSProperties, type MouseEventHandler, type RefObject } from 'react'
-import { BubbleGraphic } from './BubbleGraphic'
 import { DailyStoryReader } from './DailyStoryReader'
 import { PublicSiteFooter, PublicSiteHeader } from './PublicSiteChrome'
-import {
-  dailyEpisodes,
-  vibeHighlights,
-} from '../data/dailyEpisodes'
-import { getDailyStoryForDate, getDailyStoryForDateKey } from '../data/dailyStories'
-import { getVibe, type VibeId } from '../data/presets'
+import { vibeHighlights } from '../data/dailyEpisodes'
+import { dailyStories, getDailyStoryForDate, getDailyStoryForDateKey, getLocalDateKey, type DailyStory } from '../data/dailyStories'
+import { getVibe } from '../data/presets'
 
 type PublicHomeProps = {
   fileInputRef?: RefObject<HTMLInputElement | null>
@@ -18,6 +14,21 @@ type PublicHomeProps = {
 }
 
 const noop = () => undefined
+const storyDateFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC',
+})
+
+function formatStoryDate(dateKey: string) {
+  return storyDateFormatter.format(new Date(`${dateKey}T00:00:00Z`))
+}
+
+function getTomorrowDateKey(dateKey: string) {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  return getLocalDateKey(new Date(year, month - 1, day + 1))
+}
+
 export function PublicHome({
   fileInputRef,
   onFileChange,
@@ -25,35 +36,28 @@ export function PublicHome({
   onUpload = noop,
   dailyStoryDateKey,
 }: PublicHomeProps) {
+  const todayDateKey = dailyStoryDateKey ?? getLocalDateKey()
   const featuredStory = useMemo(
     () => dailyStoryDateKey
       ? getDailyStoryForDateKey(dailyStoryDateKey)
       : getDailyStoryForDate(),
     [dailyStoryDateKey],
   )
-  const [isReaderOpen, setIsReaderOpen] = useState(false)
-  const [activeVibeId, setActiveVibeId] = useState<VibeId | null>(null)
-  const closeReader = useCallback(() => setIsReaderOpen(false), [])
-
-  const visibleEpisodes = useMemo(
-    () => activeVibeId
-      ? dailyEpisodes.filter((episode) => episode.vibeId === activeVibeId)
-      : dailyEpisodes,
-    [activeVibeId],
+  const tomorrowStory = useMemo(
+    () => dailyStories.find((story) => story.date === getTomorrowDateKey(todayDateKey)) ?? null,
+    [todayDateKey],
   )
-  const activeVibe = activeVibeId ? getVibe(activeVibeId) : null
+  const [readerStory, setReaderStory] = useState<DailyStory | null>(null)
+  const closeReader = useCallback(() => setReaderStory(null), [])
 
-  const scrollToMore = () => {
-    window.requestAnimationFrame(() => {
-      document.getElementById('more-from-petsays')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
-  }
-
-  const handleVibeClick = (vibeId: VibeId) => {
-    setActiveVibeId((current) => current === vibeId ? null : vibeId)
-    scrollToMore()
-  }
-
+  const recentStories = useMemo(
+    () => featuredStory
+      ? dailyStories
+        .filter((story) => story.date < featuredStory.date)
+        .sort((left, right) => right.date.localeCompare(left.date))
+      : [],
+    [featuredStory],
+  )
   return (
     <div className="app-shell home-shell">
       <PublicSiteHeader onHome={onHome} showHomeNav />
@@ -76,7 +80,7 @@ export function PublicHome({
                 <button
                   type="button"
                   className="today-cta"
-                  onClick={() => featuredStory && setIsReaderOpen(true)}
+                  onClick={() => featuredStory && setReaderStory(featuredStory)}
                   disabled={!featuredStory}
                 >
                   <span>Read today’s story</span>
@@ -84,6 +88,13 @@ export function PublicHome({
                 </button>
                 <p className="today-freshness"><span aria-hidden="true">▣</span> New every day · Come back tomorrow</p>
               </div>
+              {tomorrowStory && (
+                <aside className="today-tomorrow" aria-label="Tomorrow on PetSays">
+                  <p className="today-tomorrow-kicker">TOMORROW ON PETSAYS</p>
+                  <strong className="today-tomorrow-title">{tomorrowStory.title}</strong>
+                  <p className="today-tomorrow-note">A new tiny episode tomorrow. <span aria-hidden="true">→</span></p>
+                </aside>
+              )}
             </div>
 
             <div className="today-featured">
@@ -105,44 +116,44 @@ export function PublicHome({
               </div>
             </div>
 
-            {featuredStory ? (
-              <div className="today-preview" aria-label={`${featuredStory.slides.length}-part story preview`}>
-                <div className="mobile-story-progress">
-                  <span className="mobile-story-dots" aria-hidden="true">
-                    {featuredStory.slides.map((_, index) => (
-                      <span key={`${featuredStory.date}-progress-${index}`} className={index === 0 ? 'is-active' : undefined} />
-                    ))}
-                  </span>
-                  <span className="mobile-story-progress-copy">
-                    <strong>{featuredStory.slides.length}-part story</strong>
-                    <small>Episode 1 of {featuredStory.slides.length}</small>
-                  </span>
+            {recentStories.length > 0 && (
+              <section id="more-from-petsays" className="today-more" aria-labelledby="more-title">
+                <div className="today-more-heading">
+                  <div>
+                    <p className="home-kicker">MORE FROM PETSAYS</p>
+                    <h2 id="more-title">Previous PetSays Today episodes</h2>
+                  </div>
                 </div>
-                <div
-                  className="preview-cards"
-                  style={{ '--story-slide-count': featuredStory.slides.length } as CSSProperties}
-                >
-                  {featuredStory.slides.map((slide, index) => (
-                    <div
-                      key={`${featuredStory.date}-${index}`}
-                      className={`preview-card preview-card-${index + 1} ${index > 1 ? 'is-locked' : ''}`}
-                      aria-hidden="true"
-                    >
-                      <img src={slide} alt="" loading="lazy" width="240" height="150" />
-                      <span className="preview-number">{index + 1}</span>
-                      {index > 1 && <span className="preview-lock">●</span>}
-                    </div>
-                  ))}
-                </div>
-                <button type="button" className="preview-count" onClick={() => setIsReaderOpen(true)}>
-                  <strong>{featuredStory.slides.length}-part<br />story</strong>
-                  <span>+{featuredStory.slides.length - 1} more <span aria-hidden="true">→</span></span>
-                </button>
-              </div>
-            ) : (
-              <div className="today-preview today-preview-empty" role="status">
-                No dated story is available yet.
-              </div>
+
+                {recentStories.length > 0 ? (
+                  <div className="today-more-list" aria-label="Previous PetSays Today episodes">
+                    {recentStories.map((story) => {
+                      const vibe = getVibe(story.vibe)
+
+                      return (
+                        <button
+                          key={story.date}
+                          type="button"
+                          className="today-more-card"
+                          onClick={() => setReaderStory(story)}
+                          aria-label={`Read ${story.title}`}
+                        >
+                          <span className="today-more-card-image">
+                            <img src={story.cover} alt={story.alt} loading="lazy" width="640" height="420" />
+                          </span>
+                          <span className="today-more-card-copy">
+                            <span className="today-more-card-vibe">{vibe.label}</span>
+                            <strong>{story.title}</strong>
+                            <time dateTime={story.date}>{formatStoryDate(story.date)}</time>
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="today-more-empty" role="status">No earlier stories in this vibe yet.</p>
+                )}
+              </section>
             )}
           </section>
 
@@ -176,21 +187,6 @@ export function PublicHome({
 
             <p className="maker-home-trust">No signup · Free to use</p>
 
-            <ol className="maker-steps" aria-label="How PetSays works">
-              <li>
-                <strong>01</strong>
-                <span><b>Upload</b><small>Choose the face.</small></span>
-              </li>
-              <li>
-                <strong>02</strong>
-                <span><b>Pick a vibe</b><small>Trust your instincts.</small></span>
-              </li>
-              <li>
-                <strong>03</strong>
-                <span><b>Download</b><small>Keep the joke.</small></span>
-              </li>
-            </ol>
-
           </section>
         </section>
 
@@ -213,26 +209,19 @@ export function PublicHome({
                 <p className="home-section-support">Pick a mood. Find your next laugh.</p>
               </div>
             </div>
-            <button type="button" className="home-quiet-link" onClick={() => {
-              setActiveVibeId(null)
-              scrollToMore()
-            }}>
+            <a className="home-quiet-link" href="/pet-thought-bubble-ideas/">
               See all vibes <span aria-hidden="true">→</span>
-            </button>
+            </a>
           </div>
 
           <div className="vibe-highlights" role="list" aria-label="PetSays vibes">
             {vibeHighlights.map((highlight) => {
               const vibe = getVibe(highlight.id)
-              const isActive = activeVibeId === highlight.id
-
               return (
-                <button
+                <a
                   key={highlight.id}
-                  type="button"
-                  className={`vibe-highlight ${isActive ? 'is-active' : ''}`}
-                  onClick={() => handleVibeClick(highlight.id)}
-                  aria-pressed={isActive}
+                  className="vibe-highlight"
+                  href={`/pet-thought-bubble-ideas/#ideas-${highlight.id}`}
                   style={{ '--vibe-tint': vibe.tint } as CSSProperties}
                 >
                   <img src={highlight.image} alt="" loading="lazy" width="180" height="180" />
@@ -241,46 +230,7 @@ export function PublicHome({
                     <small>{highlight.description}</small>
                   </span>
                   <span className="vibe-highlight-arrow" aria-hidden="true">→</span>
-                </button>
-              )
-            })}
-          </div>
-        </section>
-
-        <section id="more-from-petsays" className="home-section home-more" aria-labelledby="more-title">
-          <div className="home-section-heading">
-            <div>
-              <p className="home-kicker">MORE FROM PETSAYS</p>
-              <div className="home-heading-row">
-                <h2 id="more-title">More from PetSays</h2>
-                <p className="home-section-support">Handpicked pet thoughts for your daily dose of joy.</p>
-              </div>
-            </div>
-            {activeVibe && (
-              <button type="button" className="home-quiet-link" onClick={() => setActiveVibeId(null)}>
-                Clear {activeVibe.label} <span aria-hidden="true">×</span>
-              </button>
-            )}
-          </div>
-
-          <div className="editorial-grid">
-            {visibleEpisodes.map((episode) => {
-              const vibe = getVibe(episode.vibeId)
-
-              return (
-                <article className="editorial-card" key={episode.id}>
-                  <div className="editorial-image">
-                    <img src={episode.image} alt={episode.alt} loading="lazy" width="640" height="420" />
-                    {episode.editorialLabel && <span className="editorial-label">{episode.editorialLabel}</span>}
-                    <div className="editorial-bubble" aria-hidden="true">
-                      <BubbleGraphic kind="thought" text={episode.slides[0]} />
-                    </div>
-                  </div>
-                  <div className="editorial-card-copy">
-                    <span>{vibe.label}</span>
-                    <h3>{episode.title}</h3>
-                  </div>
-                </article>
+                </a>
               )
             })}
           </div>
@@ -295,10 +245,10 @@ export function PublicHome({
       </main>
 
       <PublicSiteFooter />
-      {featuredStory && (
+      {readerStory && (
         <DailyStoryReader
-          episode={featuredStory}
-          isOpen={isReaderOpen}
+          episode={readerStory}
+          isOpen
           onClose={closeReader}
           onUpload={onUpload}
         />

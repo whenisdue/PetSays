@@ -118,6 +118,14 @@ export function PetThoughtBubbleIdeasPage() {
     }
   }, [])
 
+  useEffect(() => {
+    const hashVibeId = thoughtBubbleVibeOrder.find((vibeId) => window.location.hash === `#ideas-${vibeId}`)
+    if (!hashVibeId) return
+
+    const frame = window.requestAnimationFrame(() => openVibe(hashVibeId, true))
+    return () => window.cancelAnimationFrame(frame)
+  }, [openVibe])
+
   return (
     <div className="app-shell ideas-page">
       <PublicSiteHeader />
