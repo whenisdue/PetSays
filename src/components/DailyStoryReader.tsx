@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DailyStory } from '../data/dailyStories'
 
+const SLIDE_TRANSITION_DURATION = 220
+
+type SlideDirection = 'next' | 'previous'
+
 type DailyStoryReaderProps = {
   episode: DailyStory
   isOpen: boolean
@@ -11,12 +15,56 @@ type DailyStoryReaderProps = {
 export function DailyStoryReader({ episode, isOpen, onClose, onUpload }: DailyStoryReaderProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
+  const transitionTimeoutRef = useRef<number | null>(null)
   const [activeSlide, setActiveSlide] = useState(0)
+  const [slideDirection, setSlideDirection] = useState<SlideDirection>('next')
+  const [isTransitioning, setIsTransitioning] = useState(false)
+
+  const startSlideTransition = useCallback((direction: SlideDirection) => {
+    if (isTransitioning) return false
+
+    setSlideDirection(direction)
+    setIsTransitioning(true)
+    transitionTimeoutRef.current = window.setTimeout(() => {
+      transitionTimeoutRef.current = null
+      setIsTransitioning(false)
+    }, SLIDE_TRANSITION_DURATION)
+    return true
+  }, [isTransitioning])
+
+  const goToPreviousSlide = useCallback(() => {
+    if (activeSlide === 0 || !startSlideTransition('previous')) return
+    setActiveSlide((current) => Math.max(0, current - 1))
+  }, [activeSlide, startSlideTransition])
+
+  const goToNextSlide = useCallback(() => {
+    if (activeSlide === episode.slides.length - 1 || !startSlideTransition('next')) return
+    setActiveSlide((current) => Math.min(episode.slides.length - 1, current + 1))
+  }, [activeSlide, episode.slides.length, startSlideTransition])
+
+  const goToSlide = useCallback((index: number) => {
+    if (index < 0 || index >= episode.slides.length || index === activeSlide) return
+    const direction: SlideDirection = index > activeSlide ? 'next' : 'previous'
+    if (!startSlideTransition(direction)) return
+    setActiveSlide(index)
+  }, [activeSlide, episode.slides.length, startSlideTransition])
 
   const closeReader = useCallback(() => {
+    if (transitionTimeoutRef.current !== null) {
+      window.clearTimeout(transitionTimeoutRef.current)
+      transitionTimeoutRef.current = null
+    }
+    setIsTransitioning(false)
+    setSlideDirection('next')
     setActiveSlide(0)
     onClose()
   }, [onClose])
+
+  useEffect(() => () => {
+    if (transitionTimeoutRef.current !== null) {
+      window.clearTimeout(transitionTimeoutRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     if (!isOpen) return
@@ -30,8 +78,8 @@ export function DailyStoryReader({ episode, isOpen, onClose, onUpload }: DailySt
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') closeReader()
-      if (event.key === 'ArrowLeft') setActiveSlide((current) => Math.max(0, current - 1))
-      if (event.key === 'ArrowRight') setActiveSlide((current) => Math.min(episode.slides.length - 1, current + 1))
+      if (event.key === 'ArrowLeft') goToPreviousSlide()
+      if (event.key === 'ArrowRight') goToNextSlide()
     }
 
     document.addEventListener('keydown', handleKeyDown)
@@ -40,7 +88,7 @@ export function DailyStoryReader({ episode, isOpen, onClose, onUpload }: DailySt
       document.removeEventListener('keydown', handleKeyDown)
       previousFocusRef.current?.focus()
     }
-  }, [closeReader, episode.slides.length, isOpen])
+  }, [closeReader, goToNextSlide, goToPreviousSlide, isOpen])
 
   if (!isOpen) return null
 
@@ -55,13 +103,10 @@ export function DailyStoryReader({ episode, isOpen, onClose, onUpload }: DailySt
         className="daily-reader"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="daily-reader-title"
+        aria-labelledby="daily-reader-context"
       >
         <div className="daily-reader-header">
-          <div>
-            <p className="home-kicker">PETSAYS TODAY</p>
-            <h2 id="daily-reader-title">{episode.title}</h2>
-          </div>
+          <p className="home-kicker" id="daily-reader-context">PETSAYS TODAY</p>
           <button
             ref={closeButtonRef}
             className="daily-reader-close"
@@ -73,8 +118,29 @@ export function DailyStoryReader({ episode, isOpen, onClose, onUpload }: DailySt
           </button>
         </div>
 
-        <div className="daily-reader-stage" aria-live="polite">
-          <img src={slide} alt={episode.alt} />
+        <div
+          className={`daily-reader-stage${isTransitioning ? ` is-transitioning is-${slideDirection}` : ''}`}
+          aria-live="polite"
+        >
+          <img
+            src={slide}
+            alt={episode.alt}
+            draggable={false}
+          />
+          <button
+            type="button"
+            className="daily-reader-tap-zone daily-reader-tap-zone--prev"
+            onClick={goToPreviousSlide}
+            disabled={activeSlide === 0}
+            aria-label="Previous story slide"
+          />
+          <button
+            type="button"
+            className="daily-reader-tap-zone daily-reader-tap-zone--next"
+            onClick={goToNextSlide}
+            disabled={isLastSlide}
+            aria-label="Next story slide"
+          />
           <span className="daily-reader-counter">{activeSlide + 1} / {episode.slides.length}</span>
         </div>
 
@@ -82,7 +148,7 @@ export function DailyStoryReader({ episode, isOpen, onClose, onUpload }: DailySt
           <button
             type="button"
             className="daily-reader-arrow"
-            onClick={() => setActiveSlide((current) => Math.max(0, current - 1))}
+            onClick={goToPreviousSlide}
             disabled={activeSlide === 0}
             aria-label="Previous story slide"
           >
@@ -94,7 +160,7 @@ export function DailyStoryReader({ episode, isOpen, onClose, onUpload }: DailySt
                 key={`${episode.date}-${index}`}
                 className={index === activeSlide ? 'is-active' : ''}
                 type="button"
-                onClick={() => setActiveSlide(index)}
+                onClick={() => goToSlide(index)}
                 aria-label={`Go to story slide ${index + 1}`}
                 aria-current={index === activeSlide ? 'step' : undefined}
               >
@@ -105,7 +171,7 @@ export function DailyStoryReader({ episode, isOpen, onClose, onUpload }: DailySt
           <button
             type="button"
             className="daily-reader-arrow"
-            onClick={() => setActiveSlide((current) => Math.min(episode.slides.length - 1, current + 1))}
+            onClick={goToNextSlide}
             disabled={isLastSlide}
             aria-label="Next story slide"
           >
@@ -114,7 +180,7 @@ export function DailyStoryReader({ episode, isOpen, onClose, onUpload }: DailySt
         </div>
 
         <div className="daily-reader-footer">
-          <p>{isLastSlide ? 'That’s today’s episode. Your pet has notes too.' : 'A little more context is coming.'}</p>
+          <p>{isLastSlide ? 'That’s today’s episode. Your pet has notes too.' : 'Tap the photo or use the arrows to continue.'}</p>
           {isLastSlide && onUpload && (
             <button type="button" className="daily-reader-create" onClick={() => {
               closeReader()

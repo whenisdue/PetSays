@@ -4543,23 +4543,14 @@ h2 {
 
 .daily-reader-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 16px;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .daily-reader-header .home-kicker {
-  margin-bottom: 8px;
-}
-
-.daily-reader-header h2 {
-  max-width: 14ch;
   margin: 0;
-  font-family: var(--font-hero);
-  font-size: clamp(1.85rem, 5vw, 2.8rem);
-  letter-spacing: -0.05em;
-  line-height: 0.92;
 }
 
 .daily-reader-close {
@@ -4581,10 +4572,40 @@ h2 {
   position: relative;
   width: 100%;
   aspect-ratio: 4 / 5;
+  touch-action: pan-y;
   overflow: hidden;
   border: 2px solid var(--ink);
   border-radius: 21px 21px 31px 31px;
   background: #d7d2c8;
+}
+
+.daily-reader-tap-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  width: 50%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.daily-reader-tap-zone--prev {
+  left: 0;
+}
+
+.daily-reader-tap-zone--next {
+  right: 0;
+}
+
+.daily-reader-tap-zone:disabled {
+  cursor: default;
+}
+
+.daily-reader-tap-zone:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -5px;
 }
 
 .daily-reader-stage > img {
@@ -4593,6 +4614,40 @@ h2 {
   height: 100%;
   object-fit: contain;
   object-position: center;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.daily-reader-stage.is-transitioning.is-next > img {
+  animation: daily-reader-slide-from-right 220ms ease both;
+}
+
+.daily-reader-stage.is-transitioning.is-previous > img {
+  animation: daily-reader-slide-from-left 220ms ease both;
+}
+
+@keyframes daily-reader-slide-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(48px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes daily-reader-slide-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-48px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .daily-reader-counter {
@@ -4606,6 +4661,7 @@ h2 {
   color: var(--paper);
   font-size: 0.7rem;
   font-weight: 800;
+  pointer-events: none;
 }
 
 .daily-reader-controls {
@@ -4692,6 +4748,53 @@ h2 {
   cursor: pointer;
   font-size: 0.72rem;
   font-weight: 800;
+}
+
+@media (min-width: 881px) {
+  .daily-reader {
+    max-height: calc(100dvh - 32px);
+    overflow: hidden;
+  }
+
+  .daily-reader-stage {
+    width: min(100%, calc((100dvh - 220px) * 0.8));
+    max-height: calc(100dvh - 220px);
+    margin-inline: auto;
+  }
+
+  .daily-reader-tap-zone::after {
+    position: absolute;
+    top: 50%;
+    width: 32px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    background: rgba(32, 31, 28, 0.24);
+    color: var(--paper);
+    content: "";
+    font-size: 1.9rem;
+    line-height: 1;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-50%);
+    transition: opacity 150ms ease;
+  }
+
+  .daily-reader-tap-zone--prev::after {
+    left: 12px;
+    content: "‹";
+  }
+
+  .daily-reader-tap-zone--next::after {
+    right: 12px;
+    content: "›";
+  }
+
+  .daily-reader-tap-zone:not(:disabled):hover::after,
+  .daily-reader-tap-zone:not(:disabled):focus-visible::after {
+    opacity: 0.8;
+  }
 }
 
 @media (max-width: 1150px) and (min-width: 881px) {
@@ -5134,12 +5237,13 @@ h2 {
   }
 
   .daily-reader-header {
-    margin-bottom: 13px;
+    margin-bottom: 10px;
   }
 
   .daily-reader-stage {
-    width: 100%;
+    width: calc(100% + 16px);
     aspect-ratio: 4 / 5;
+    margin-inline: -8px;
     border-radius: 18px 18px 26px 26px;
   }
 
