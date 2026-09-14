@@ -27,5 +27,21 @@ export const dailyStoryManifest = [
       "/daily-stories/2026-09-14/03.jpg",
       "/daily-stories/2026-09-14/04.jpg"
     ]
+  },
+  {
+    "date": "2026-09-15",
+    "title": "The Kitchen Has Failed Me",
+    "vibe": "dramatic",
+    "alt": "Large fluffy white dog lying on a kitchen floor beside an island, looking tired and expectant.",
+    "cover": "/daily-stories/2026-09-15/cover.jpg",
+    "slides": [
+      "/daily-stories/2026-09-15/01.jpg",
+      "/daily-stories/2026-09-15/02.jpg",
+      "/daily-stories/2026-09-15/03.jpg",
+      "/daily-stories/2026-09-15/04.jpg",
+      "/daily-stories/2026-09-15/05.jpg",
+      "/daily-stories/2026-09-15/06.jpg",
+      "/daily-stories/2026-09-15/07.jpg"
+    ]
   }
 ] as const
